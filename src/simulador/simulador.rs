@@ -23,7 +23,9 @@ pub struct Simulador{
     //armazena os clientes que finalizaram seus serviços para futura coleta e tratamento das estatísticas
     clientes_finalizados: Vec<Cliente>,
     n_chegadas : u64,
-    max_chegadas : u64
+    max_chegadas : u64,
+
+    esta_ocioso : bool
 }
 
 impl Simulador {
@@ -40,7 +42,8 @@ impl Simulador {
             mu,
             clientes_finalizados: Vec::new(),
             n_chegadas: 0,
-            max_chegadas
+            max_chegadas,
+            esta_ocioso : true
         }
     }
 
@@ -51,6 +54,11 @@ impl Simulador {
     //Trata inicalmente a execução de um evento e o endereça de acordo com seu tipo
     pub fn trata_evento(&mut self){
         let evento_atual = self.evento_atual();
+        //contabiliza o tempo ocioso do simulador
+        if self.esta_ocioso {
+            self.tempo_ocioso += evento_atual.tempo - self.tempo;
+            self.esta_ocioso = false;
+        }
         //atualiza o tempo atual da simulação
         self.tempo = evento_atual.tempo;
         match evento_atual.tipo {
@@ -103,7 +111,7 @@ impl Simulador {
                 if self.fila_2.is_empty(){
                     //Adiciona o evento de fim do serviço 2 à lista de eventos
                     self.adiciona_evento(Evento::novo(TipoEvento::FimServico2, 
-                        self.tempo + self.ocupa_servidor.unwrap().servico_2,
+                        self.tempo + self.ocupa_servidor.unwrap().resta_servico_2,
                         self.tempo));
                 //Caso a fila 2 possua clientes
                 }else{
@@ -113,7 +121,7 @@ impl Simulador {
                     self.ocupa_servidor = self.fila_2.pop_front();
                     //Adiciona o evento de fim do serviço 2 à lista de eventos
                     self.adiciona_evento(Evento::novo(TipoEvento::FimServico2, 
-                        self.tempo + self.ocupa_servidor.unwrap().servico_2,
+                        self.tempo + self.ocupa_servidor.unwrap().resta_servico_2,
                         self.tempo));
                 }
             }else {
@@ -131,8 +139,32 @@ impl Simulador {
         }
     }
 
+    //Trata a execução do evento de fim do serviço 2
     pub fn trata_fim_2(&mut self, evento_atual : Evento){
+        if let Some(cliente_atual) = &mut self.ocupa_servidor {
+            //Armazena o instante em que o cliente finaliza o serviço 2
+            cliente_atual.termina_2 = self.tempo;
+            //Zera o tempo de serviço 2 restante para o cliente
+            cliente_atual.resta_servico_2 = 0.0;
 
+            //Caso a fila 2 esteja vazia
+            if self.fila_2.is_empty(){
+                //Remove o cliente atual do servidor
+                self.ocupa_servidor = None;
+                //Declara o servidor como estando em estado ocioso
+                self.esta_ocioso = true;
+            //Caso a fila 2 não esteja vazia
+            }else{
+                //Recupera o primeiro cliente da fila 2 e o concede serviço
+                self.ocupa_servidor = self.fila_2.pop_front();
+                //Adiciona o evento fim de serviço 2 à lista de eventos
+                self.adiciona_evento(Evento::novo(TipoEvento::FimServico2, 
+                    self.tempo + self.ocupa_servidor.unwrap().resta_servico_2,
+                    self.tempo));
+            }
+        }else { //interrompe a execução do programa pois temos um erro
+            panic!("Erro: Evento fim de serviço 2 tratado sem clientes no servidor");
+        }
     }
 
     pub fn trata_interrupcao(&mut self){
