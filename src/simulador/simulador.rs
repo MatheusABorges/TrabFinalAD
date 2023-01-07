@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use super::{enums::{Cor, TipoEvento}, cliente::Cliente, evento::{Evento, self}, estatisticas::exponencial::{AmostraExp}};
+use super::{enums::{Cor, TipoEvento}, cliente::Cliente, evento::{Evento}, estatisticas::exponencial::{AmostraExp}};
 
 pub struct Simulador{
     //Será Some(Cliente) caso exista um cliente em serviço
@@ -68,6 +68,17 @@ impl Simulador {
             esta_ocioso : true
         }
     }
+
+    pub fn roda_simulacao(&mut self){
+        let amostra_chegada = self.gera_exp.amostra_exp(self.lambda);
+        self.adiciona_evento(Evento::novo(TipoEvento::CHEGADA, 
+            self.tempo + amostra_chegada, 
+            self.tempo));
+        while &mut self.lista_eventos.len() > &mut 0 {
+            self.trata_evento();
+        }
+        println!("TERMINOU");
+    }
     //Retorna o próximo evento a ser tratado da lista de eventos
     pub fn evento_atual(&mut self) -> Option<Evento> {
         //Retorna None caso não existam eventos na lista de eventos
@@ -102,7 +113,6 @@ impl Simulador {
                 TipoEvento::FimServico2 => self.trata_fim_2(evento_atual)
             };
         }else{//Caso não existam eventos na lista de eventos
-            //TODO: tratar fim da rodada
             panic!("Erro: tentando recuperar evento atual com a lista vazia");
         }
     }
@@ -113,10 +123,13 @@ impl Simulador {
         let novo_cliente = self.inicia_cliente();
         //Gera uma amostra exponencial com taxa lambda para uma nova chegada
         let amostra_chegada = self.gera_exp.amostra_exp(self.lambda);
-        //adiciona uma nova chegada à lista de eventos
-        self.adiciona_evento(Evento::novo(TipoEvento::CHEGADA, 
-            self.tempo + amostra_chegada, 
-            self.tempo));
+        //adiciona uma nova chegada à lista de eventos caso o limite de chegadas não tenha sido atingido
+        if self.max_chegadas > self.n_chegadas {
+            self.n_chegadas += 1;
+            self.adiciona_evento(Evento::novo(TipoEvento::CHEGADA, 
+                self.tempo + amostra_chegada, 
+                self.tempo));
+        }
         match &mut (self.ocupa_servidor){
             //Caso não exista cliente no servidor
             None => {
@@ -253,10 +266,5 @@ impl Simulador {
         //Cria a instância de cliente, com seu tempo de chagada sendo o tempo atual do sistema
         //seus tempos de serviço gerados a partir de amostras exponenciais e sua cor sendo Branca
         Cliente::novo(self.tempo, tempo_servico_1, tempo_servico_2, Cor::BRANCO)
-    }
-
-    //TODO: remove this
-    pub fn temp_amostra(&mut self) -> f64 {
-        self.gera_exp.amostra_exp(self.lambda)
     }
 }

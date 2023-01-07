@@ -6,4 +6,4 @@ pub mod enums;
 
 pub mod evento;
 
-mod estatisticas;
+pub mod estatisticas;
