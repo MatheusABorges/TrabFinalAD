@@ -1,6 +1,7 @@
 use super::enums::TipoEvento;
 
 #[derive(Debug)]
+#[derive(Clone, Copy)]
 //Estrutura que armazena os eventos da simulação
 pub struct Evento {
     //armazena qual o tipo do evento

@@ -8,6 +8,7 @@ pub enum Cor {
 }
 
 #[derive(Debug)]
+#[derive(Clone, Copy)]
 pub enum TipoEvento {
     FimServico1,
     FimServico2,
