@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use super::{enums::{Cor, TipoEvento}, cliente::Cliente, evento::{Evento, self}, estatisticas::exponencial::amostra_exp};
+use super::{enums::{Cor, TipoEvento}, cliente::Cliente, evento::{Evento, self}, estatisticas::exponencial::{AmostraExp}};
 
 pub struct Simulador{
     //Será Some(Cliente) caso exista um cliente em serviço
@@ -20,6 +20,8 @@ pub struct Simulador{
     lambda : f64,
     //taxa da exponencial que representa a duração dos serviços do cliente
     mu : f64,
+    //estrutura que cuida da geração de números aleatórios com distribuição exponencial
+    gera_exp : AmostraExp,
     //armazena os clientes que finalizaram seus serviços para futura coleta e tratamento das estatísticas
     clientes_finalizados: Vec<Cliente>,
     n_chegadas : u64,
@@ -29,7 +31,7 @@ pub struct Simulador{
 }
 
 impl Simulador {
-
+    //Função que retorna um simulador não determinístico com seed fornecida pelo SO
     pub fn novo(lambda : f64, mu : f64, max_chegadas : u64) -> Self {
         Self { 
             ocupa_servidor: None,
@@ -40,6 +42,7 @@ impl Simulador {
             tempo: 0.0, 
             lambda, 
             mu,
+            gera_exp : AmostraExp::novo(false,0),
             clientes_finalizados: Vec::new(),
             n_chegadas: 0,
             max_chegadas,
@@ -47,6 +50,24 @@ impl Simulador {
         }
     }
 
+    //Função que retorna um simulador determinístico com seed informada na sua criação
+    pub fn novo_det(lambda : f64, mu : f64, max_chegadas : u64, seed: u64) -> Self {
+        Self { 
+            ocupa_servidor: None,
+            tempo_ocioso: 0.0,
+            fila_1: VecDeque::new(),
+            fila_2: VecDeque::new(), 
+            lista_eventos: Vec::new(), 
+            tempo: 0.0, 
+            lambda, 
+            mu,
+            gera_exp : AmostraExp::novo(true, seed),
+            clientes_finalizados: Vec::new(),
+            n_chegadas: 0,
+            max_chegadas,
+            esta_ocioso : true
+        }
+    }
     //Retorna o próximo evento a ser tratado da lista de eventos
     pub fn evento_atual(&mut self) -> Option<Evento> {
         //Retorna None caso não existam eventos na lista de eventos
@@ -90,9 +111,11 @@ impl Simulador {
     //Trata a execução do evento do tipo Chegada
     pub fn trata_chegada(&mut self, evento_atual : Evento){
         let novo_cliente = self.inicia_cliente();
+        //Gera uma amostra exponencial com taxa lambda para uma nova chegada
+        let amostra_chegada = self.gera_exp.amostra_exp(self.lambda);
         //adiciona uma nova chegada à lista de eventos
         self.adiciona_evento(Evento::novo(TipoEvento::CHEGADA, 
-            self.tempo + amostra_exp(self.lambda), 
+            self.tempo + amostra_chegada, 
             self.tempo));
         match &mut (self.ocupa_servidor){
             //Caso não exista cliente no servidor
@@ -222,18 +245,18 @@ impl Simulador {
     }
 
     //Gera um cliente que acaba de entrar na fila
-    pub fn inicia_cliente(&self) -> Cliente{
+    pub fn inicia_cliente(&mut self) -> Cliente{
         //gera a amostra de tempo total do serviço 1
-        let tempo_servico_1 = amostra_exp(self.mu);
+        let tempo_servico_1 = self.gera_exp.amostra_exp(self.mu);
         //gera a amostra de tempo total do serviço 2
-        let tempo_servico_2 = amostra_exp(self.mu);
+        let tempo_servico_2 = self.gera_exp.amostra_exp(self.mu);
         //Cria a instância de cliente, com seu tempo de chagada sendo o tempo atual do sistema
         //seus tempos de serviço gerados a partir de amostras exponenciais e sua cor sendo Branca
         Cliente::novo(self.tempo, tempo_servico_1, tempo_servico_2, Cor::BRANCO)
     }
 
     //TODO: remove this
-    pub fn temp_amostra(&self) -> f64 {
-        amostra_exp(self.lambda)
+    pub fn temp_amostra(&mut self) -> f64 {
+        self.gera_exp.amostra_exp(self.lambda)
     }
 }
