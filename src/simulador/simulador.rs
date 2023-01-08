@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use super::{enums::{Cor, TipoEvento}, cliente::Cliente, evento::Evento, estatisticas::{exponencial::AmostraExp, numero_clientes::NClientes}};
+use super::{enums::{Cor, TipoEvento}, cliente::Cliente, evento::Evento, estatisticas::{exponencial::AmostraExp, numero_clientes::NClientes, espera::EstatisticasEspera}};
 
 pub struct Simulador{
     //Será Some(Cliente) caso exista um cliente em serviço
@@ -22,22 +22,26 @@ pub struct Simulador{
     mu : f64,
     //estrutura que cuida da geração de números aleatórios com distribuição exponencial
     gera_exp : AmostraExp,
-    //armazena os clientes que finalizaram seus serviços para futura coleta e tratamento das estatísticas
-    clientes_finalizados: Vec<Cliente>,
     //contador que armazena a quantidade de chegadas que ocorreram na rodada atual
-    n_chegadas : u64,
+    n_chegadas : usize,
     //armazena o máximo de chegadas por rodada
-    max_chegadas : u64,
+    max_chegadas : usize,
     //flag que indica se o sistema atualmente encontra-se ocioso
     esta_ocioso : bool,
     //Estrutura que contabiliza as alterações de número de clientes no sistema a cada execução de eventos
     //e as médias dessas estatísticas ao fim das rodadas
     n_clientes : NClientes,
+    //Estrutura de dados que contabiliza as estatísticas dos clientes a cada fim de rodada
+    estatisticas_clientes : EstatisticasEspera,
+    //Armazena o número da rodada atual
+    rodada_atual : usize,
+    //Armazena a quantidade total de rodadas solicitadas pelo usuário
+    max_rodadas : usize
 }
 
 impl Simulador {
     //Função que retorna um simulador não determinístico com seed fornecida pelo SO
-    pub fn novo(lambda : f64, mu : f64, max_chegadas : u64) -> Self {
+    pub fn novo(lambda : f64, mu : f64, max_chegadas : usize, max_rodadas : usize) -> Self {
         Self { 
             ocupa_servidor: None,
             tempo_ocioso: 0.0,
@@ -48,16 +52,18 @@ impl Simulador {
             lambda, 
             mu,
             gera_exp : AmostraExp::novo(false,0),
-            clientes_finalizados: Vec::new(),
             n_chegadas: 0,
             max_chegadas,
             esta_ocioso : true,
-            n_clientes : NClientes::novo()
+            n_clientes : NClientes::novo(),
+            estatisticas_clientes : EstatisticasEspera::novo(),
+            rodada_atual : 0,
+            max_rodadas
         }
     }
 
     //Função que retorna um simulador determinístico com seed informada na sua criação
-    pub fn novo_det(lambda : f64, mu : f64, max_chegadas : u64, seed: u64) -> Self {
+    pub fn novo_det(lambda : f64, mu : f64, max_chegadas : usize, max_rodadas : usize, seed: u64) -> Self {
         Self { 
             ocupa_servidor: None,
             tempo_ocioso: 0.0,
@@ -68,16 +74,24 @@ impl Simulador {
             lambda, 
             mu,
             gera_exp : AmostraExp::novo(true, seed),
-            clientes_finalizados: Vec::new(),
             n_chegadas: 0,
             max_chegadas,
             esta_ocioso : true,
-            n_clientes : NClientes::novo()
+            n_clientes : NClientes::novo(),
+            estatisticas_clientes : EstatisticasEspera::novo(),
+            rodada_atual : 0,
+            max_rodadas
         }
     }
 
     pub fn roda_simulacao(&mut self){
+        self.inicia_rodada()
+    }
+
+    //Função que inicia as rodadas e grava as estatísticas obtidas nas variáveis de estado do servidor
+    pub fn inicia_rodada(&mut self){
         let amostra_chegada = self.gera_exp.amostra_exp(self.lambda);
+        //Adiciona a chegada inicial à lista de eventos
         self.adiciona_evento(Evento::novo(TipoEvento::CHEGADA, 
             self.tempo + amostra_chegada, 
             self.tempo));
@@ -222,6 +236,9 @@ impl Simulador {
                 panic!("Erro: A fila 1 possuí clientes enquanto um cliente da está sendo atendido pelo serviço 2");
             }
 
+            //Contabiliza todas as estatísticas do cliente que acaba de deixar o sistema
+            self.contabiliza_estatisticas_cliente();
+
             //Caso a fila 2 esteja vazia
             if self.fila_2.is_empty(){
                 //Remove o cliente atual do servidor
@@ -312,6 +329,20 @@ impl Simulador {
                     self.n_clientes.n1 = self.n_clientes.nq1;
                 }
             }
+        }
+    }
+
+    //Registra no estado do simulador as estatísticas de um cliente que acaba de deixar o sistema
+    fn contabiliza_estatisticas_cliente(&mut self) {
+        if let Some(cliente) = self.ocupa_servidor{
+            self.estatisticas_clientes.e_t1 += cliente.tempo_t1();
+            self.estatisticas_clientes.e_t2 += cliente.tempo_t2();
+            self.estatisticas_clientes.e_w1 += cliente.tempo_w1();
+            self.estatisticas_clientes.e_w2 += cliente.tempo_w2();
+            self.estatisticas_clientes.e_x1 += cliente.servico_1;
+            self.estatisticas_clientes.e_x2 += cliente.servico_2;
+            self.estatisticas_clientes.v_w1 += cliente.servico_1.powi(2);
+            self.estatisticas_clientes.v_w2 += cliente.servico_2.powi(2);
         }
     }
 }

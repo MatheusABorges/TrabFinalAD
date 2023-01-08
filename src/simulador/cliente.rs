@@ -35,12 +35,12 @@ impl Cliente{
 
     //retorna o tempo total que o cliente passou na fila 1 de espera(sem considerar o tempo de serviço)
     pub fn tempo_w1(&self) -> f64{
-        self.termina_1 - self.chegada - self.servico_1
+         self.tempo_t1() - self.servico_1
     }
 
     //retorna o tempo total que o cliente passou na fila 1(considerando o tempo de serviço)
     pub fn tempo_t1(&self) -> f64{
-        self.tempo_w1() + self.servico_1
+        self.termina_1 - self.chegada
     }
 
     //retorna o tempo total que o cliente passou na fila 2 de espera(sem considerar o tempo de serviço)
