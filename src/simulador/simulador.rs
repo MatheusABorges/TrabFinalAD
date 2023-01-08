@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use super::{enums::{Cor, TipoEvento}, cliente::Cliente, evento::{Evento}, estatisticas::exponencial::{AmostraExp}};
+use super::{enums::{Cor, TipoEvento}, cliente::Cliente, evento::Evento, estatisticas::{exponencial::AmostraExp, numero_clientes::NClientes}};
 
 pub struct Simulador{
     //Será Some(Cliente) caso exista um cliente em serviço
@@ -24,10 +24,15 @@ pub struct Simulador{
     gera_exp : AmostraExp,
     //armazena os clientes que finalizaram seus serviços para futura coleta e tratamento das estatísticas
     clientes_finalizados: Vec<Cliente>,
+    //contador que armazena a quantidade de chegadas que ocorreram na rodada atual
     n_chegadas : u64,
+    //armazena o máximo de chegadas por rodada
     max_chegadas : u64,
-
-    esta_ocioso : bool
+    //flag que indica se o sistema atualmente encontra-se ocioso
+    esta_ocioso : bool,
+    //Estrutura que contabiliza as alterações de número de clientes no sistema a cada execução de eventos
+    //e as médias dessas estatísticas ao fim das rodadas
+    n_clientes : NClientes,
 }
 
 impl Simulador {
@@ -46,7 +51,8 @@ impl Simulador {
             clientes_finalizados: Vec::new(),
             n_chegadas: 0,
             max_chegadas,
-            esta_ocioso : true
+            esta_ocioso : true,
+            n_clientes : NClientes::novo()
         }
     }
 
@@ -65,7 +71,8 @@ impl Simulador {
             clientes_finalizados: Vec::new(),
             n_chegadas: 0,
             max_chegadas,
-            esta_ocioso : true
+            esta_ocioso : true,
+            n_clientes : NClientes::novo()
         }
     }
 
@@ -77,7 +84,6 @@ impl Simulador {
         while &mut self.lista_eventos.len() > &mut 0 {
             self.trata_evento();
         }
-        println!("TERMINOU");
     }
     //Retorna o próximo evento a ser tratado da lista de eventos
     pub fn evento_atual(&mut self) -> Option<Evento> {
@@ -112,6 +118,7 @@ impl Simulador {
                 TipoEvento::FimServico1 => self.trata_fim_1(evento_atual),
                 TipoEvento::FimServico2 => self.trata_fim_2(evento_atual)
             };
+            self.contabiliza_clientes();
         }else{//Caso não existam eventos na lista de eventos
             panic!("Erro: tentando recuperar evento atual com a lista vazia");
         }
@@ -130,6 +137,7 @@ impl Simulador {
                 self.tempo + amostra_chegada, 
                 self.tempo));
         }
+        //Verifica a existência de clientes sendo servidos
         match &mut (self.ocupa_servidor){
             //Caso não exista cliente no servidor
             None => {
@@ -270,5 +278,40 @@ impl Simulador {
         //Cria a instância de cliente, com seu tempo de chagada sendo o tempo atual do sistema
         //seus tempos de serviço gerados a partir de amostras exponenciais e sua cor sendo Branca
         Cliente::novo(self.tempo, tempo_servico_1, tempo_servico_2, Cor::BRANCO)
+    }
+
+    //Contabiliza as estatísticas correspondentes às médias do número de clientes na fila
+    fn contabiliza_clientes(&mut self){
+        let tempo_decorrido = self.tempo - self.n_clientes.t;
+        self.n_clientes.e_n1 += tempo_decorrido * self.n_clientes.n1 as f64;
+        self.n_clientes.e_nq1 += tempo_decorrido * self.n_clientes.nq1 as f64;
+        self.n_clientes.e_n2 += tempo_decorrido * self.n_clientes.n2 as f64;
+        self.n_clientes.e_nq2 += tempo_decorrido * self.n_clientes.nq2 as f64;
+        self.atualiza_contagem_clientes();
+    }
+
+    //Atualiza a estrutura de dados que contabiliza o número de clientes atual presente na fila
+    fn atualiza_contagem_clientes(&mut self){
+        self.n_clientes.t = self.tempo;
+        self.n_clientes.nq1 = self.fila_1.len();
+        self.n_clientes.nq2 = self.fila_2.len();
+        //Verifica o cliente atual presente no servidor
+        match &self.ocupa_servidor{
+            //Caso não exista nenhum
+            None => {
+                self.n_clientes.n1 = self.n_clientes.nq1;
+                self.n_clientes.n2 = self.n_clientes.nq2;
+            },
+            Some(cliente) => {
+                //Caso exista 1 da cor branca
+                if matches!(cliente.cor, Cor::BRANCO){
+                    self.n_clientes.n1 = self.n_clientes.nq1 + 1;
+                    self.n_clientes.n2 = self.n_clientes.nq2;
+                }else{//Caso exista 1 da cor preta
+                    self.n_clientes.n2 = self.n_clientes.nq2 + 1;
+                    self.n_clientes.n1 = self.n_clientes.nq1;
+                }
+            }
+        }
     }
 }
