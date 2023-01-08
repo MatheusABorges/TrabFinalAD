@@ -240,10 +240,14 @@ impl Simulador {
         //Remove os eventos do tipo Fim Serviço 2 da lista de eventos
         self.lista_eventos.retain(|event| {
             if matches!(event.tipo, TipoEvento::FimServico2){
-                //Ajusta o tempo restante para o término do serviço 2 para o cliente atualmente no servidor
-                self.ocupa_servidor.unwrap().resta_servico_2 = event.tempo - self.tempo;
-                //Reenvia o cliente para a fila 2
-                self.fila_2.push_front(self.ocupa_servidor.unwrap());
+                let tempo_atual = self.tempo;
+                //Recupera o cliente ocupante do servidor
+                if let Some(cliente) = &mut self.ocupa_servidor{
+                    //Ajusta o tempo restante para o término do serviço 2 para o cliente atualmente no servidor
+                    cliente.resta_servico_2 = event.tempo - tempo_atual;
+                    //Reenvia o cliente para a fila 2
+                    self.fila_2.push_front(*cliente);
+                }
                 //retorna falso, dessa forma, removendo o evento da lista
                 return false;
             }
