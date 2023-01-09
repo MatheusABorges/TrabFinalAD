@@ -41,7 +41,7 @@ pub struct Simulador{
 
 impl Simulador {
     //Função que retorna um simulador não determinístico com seed fornecida pelo SO
-    pub fn novo(lambda : f64, mu : f64, max_chegadas : usize, max_rodadas : usize) -> Self {
+    pub fn novo(rho : f64, max_chegadas : usize, max_rodadas : usize) -> Self {
         Self { 
             ocupa_servidor: None,
             tempo_ocioso: 0.0,
@@ -49,8 +49,8 @@ impl Simulador {
             fila_2: VecDeque::new(), 
             lista_eventos: Vec::new(), 
             tempo: 0.0, 
-            lambda, 
-            mu,
+            lambda:rho/2.0, 
+            mu:1.0,
             gera_exp : AmostraExp::novo(false,0),
             n_chegadas: 0,
             max_chegadas,
@@ -63,7 +63,7 @@ impl Simulador {
     }
 
     //Função que retorna um simulador determinístico com seed informada na sua criação
-    pub fn novo_det(lambda : f64, mu : f64, max_chegadas : usize, max_rodadas : usize, seed: u64) -> Self {
+    pub fn novo_det(rho : f64, max_chegadas : usize, max_rodadas : usize, seed: u64) -> Self {
         Self { 
             ocupa_servidor: None,
             tempo_ocioso: 0.0,
@@ -71,8 +71,8 @@ impl Simulador {
             fila_2: VecDeque::new(), 
             lista_eventos: Vec::new(), 
             tempo: 0.0, 
-            lambda, 
-            mu,
+            lambda : rho/2.0, 
+            mu : 1.0,
             gera_exp : AmostraExp::novo(true, seed),
             n_chegadas: 0,
             max_chegadas,
@@ -85,7 +85,11 @@ impl Simulador {
     }
 
     pub fn roda_simulacao(&mut self){
+        self.trata_periodo_transiente();
         self.inicia_rodada()
+    }
+
+    pub fn trata_periodo_transiente(&mut self){
     }
 
     //Função que inicia as rodadas e grava as estatísticas obtidas nas variáveis de estado do servidor
@@ -95,7 +99,7 @@ impl Simulador {
         self.adiciona_evento(Evento::novo(TipoEvento::CHEGADA, 
             self.tempo + amostra_chegada, 
             self.tempo));
-        while &mut self.lista_eventos.len() > &mut 0 {
+        while &mut self.lista_eventos.len() > &mut 0 && self.n_chegadas < self.max_chegadas{
             self.trata_evento();
         }
     }
@@ -116,8 +120,9 @@ impl Simulador {
         Some(self.lista_eventos.remove(index))
     }
 
-    //Trata inicalmente a execução de um evento e o endereça de acordo com seu tipo
-    pub fn trata_evento(&mut self){
+    //Trata inicalmente a execução de um evento e o endereça de acordo com seu tipo e retorna o evento tratado
+    //para possíveis análises
+    pub fn trata_evento(&mut self) -> Evento {
         //Caso exista algum evento na lista de eventos
         if let Some(evento_atual) = self.evento_atual(){
             //contabiliza o tempo ocioso do simulador
@@ -133,24 +138,23 @@ impl Simulador {
                 TipoEvento::FimServico2 => self.trata_fim_2(evento_atual)
             };
             self.contabiliza_clientes();
+            return  evento_atual;
         }else{//Caso não existam eventos na lista de eventos
             panic!("Erro: tentando recuperar evento atual com a lista vazia");
         }
     }
 
-    //TODO: coletar as estatísticas de N e Nq
     //Trata a execução do evento do tipo Chegada
     pub fn trata_chegada(&mut self, evento_atual : Evento){
+        //Gera o cliente que está chegando na chegada atual
         let novo_cliente = self.inicia_cliente();
         //Gera uma amostra exponencial com taxa lambda para uma nova chegada
         let amostra_chegada = self.gera_exp.amostra_exp(self.lambda);
-        //adiciona uma nova chegada à lista de eventos caso o limite de chegadas não tenha sido atingido
-        if self.max_chegadas > self.n_chegadas {
-            self.n_chegadas += 1;
-            self.adiciona_evento(Evento::novo(TipoEvento::CHEGADA, 
-                self.tempo + amostra_chegada, 
-                self.tempo));
-        }
+        //adiciona uma nova chegada à lista de eventos 
+        self.adiciona_evento(Evento::novo(TipoEvento::CHEGADA, 
+            self.tempo + amostra_chegada, 
+            self.tempo));
+
         //Verifica a existência de clientes sendo servidos
         match &mut (self.ocupa_servidor){
             //Caso não exista cliente no servidor
@@ -343,6 +347,34 @@ impl Simulador {
             self.estatisticas_clientes.e_x2 += cliente.servico_2;
             self.estatisticas_clientes.v_w1 += cliente.servico_1.powi(2);
             self.estatisticas_clientes.v_w2 += cliente.servico_2.powi(2);
+        }
+    }
+
+    //Função que não participa diretamente da execução do simulador mas sim
+    //é usada para estimar a duração do período transiente para os valores de rho
+    //e descarta da contabilização a quantidade de chegadas passada como parâmetro
+    pub fn testa_periodo_transiente(&mut self, max_chegadas : usize, chegadas_descartadas : usize) {
+        self.max_rodadas = 1;
+        self.max_chegadas = max_chegadas;
+        //Pega a primeira amostra para a chegada que iniciará a simulação
+        let amostra_chegada = self.gera_exp.amostra_exp(self.lambda);
+        //Adiciona a chegada inicial à lista de eventos
+        self.adiciona_evento(Evento::novo(TipoEvento::CHEGADA, 
+            self.tempo + amostra_chegada, 
+            self.tempo));
+        println!("rho, chegada");
+        //Continua a tratar eventos até que a lista de eventos esvazie(bug) ou que o max de chegadas tenha
+        //sido atingido
+        while &mut self.lista_eventos.len() > &mut 0 && self.n_chegadas < self.max_chegadas{
+            //Verifica se o evento é uma chegada
+            if matches!(self.trata_evento().tipo, TipoEvento::CHEGADA) {
+                //Incrementa o contador de chegadas por rodada
+                self.n_chegadas += 1;
+                //Só exibe estatísticas de chegadas que ocorrem depois da quantidade de chegadas descartadas recebida como parâmetro
+                if self.n_chegadas > chegadas_descartadas{
+                    println!("{}, {}", 1.0 - self.tempo_ocioso/self.tempo, self.n_chegadas-chegadas_descartadas);
+                }
+            }
         }
     }
 }

@@ -16,6 +16,8 @@ pub struct Cliente{
     pub termina_1 : f64,
     //instante de tempo em que o serviço 2 é terminado
     pub termina_2 : f64,
+    //guarda a rodada em que o cliente foi gerado e é usada para o funcionamento do método batch
+    pub rodada : usize,
     pub cor : Cor
 }
 
@@ -29,6 +31,7 @@ impl Cliente{
             resta_servico_2 : servico_2,
             termina_1 : -1.0,
             termina_2 :-1.0,
+            rodada : 0,
             cor
         }
     }
