@@ -8,6 +8,23 @@ const RHO_06 : usize =  8_000;
 const RHO_08 : usize =  4_000;
 const RHO_09 : usize =  10_000;
 
+struct  ConfiancaAtingida{
+    w1 : bool,
+    w2 : bool,
+    t1 : bool,
+    t2 : bool,
+    n1 : bool,
+    n2 : bool,
+    nq1 : bool,
+    nq2 : bool
+}
+
+impl ConfiancaAtingida {
+    fn novo() -> Self {
+        Self { w1: false, w2: false, t1: false, t2: false, n1: false, n2: false, nq1: false, nq2: false }
+    }
+}
+
 pub struct Simulador{
     //Será Some(Cliente) caso exista um cliente em serviço
     //e será None caso não exista cliente em seviço
@@ -48,7 +65,9 @@ pub struct Simulador{
     //Armazena o número da rodada atual
     rodada_atual : usize,
     //Armazena a quantidade total de rodadas solicitadas pelo usuário
-    max_rodadas : usize
+    max_rodadas : usize,
+    //Serve para verificar caso o intervalo de confiança de 95% já foi atingido para uma certa métrica
+    confianca_atingida : ConfiancaAtingida
 }
 
 impl Simulador {
@@ -73,7 +92,8 @@ impl Simulador {
             estatisticas_clientes_rodada: EstatisticasEspera::novo(),
             estatisticas_clientes_total : EstatisticasEspera::novo(),
             rodada_atual : 0,
-            max_rodadas
+            max_rodadas,
+            confianca_atingida : ConfiancaAtingida::novo()
         }
     }
 
@@ -98,7 +118,8 @@ impl Simulador {
             estatisticas_clientes_rodada : EstatisticasEspera::novo(),
             estatisticas_clientes_total : EstatisticasEspera::novo(),
             rodada_atual : 0,
-            max_rodadas
+            max_rodadas,
+            confianca_atingida : ConfiancaAtingida::novo()
         }
     }
 
@@ -116,6 +137,9 @@ impl Simulador {
             //contabiliza as estatísticas N1, N2, Nq1 e Nq2 da rodada usando o tempo decorrido como sendo o tempo do
             //fim da rodada meno o inicio da rodada
             self.contabiliza_estatisticas_n(self.tempo - tempo_inicio);
+            if self.rodada_atual > 1 {
+                self.verifica_confianca_media();
+            }
         }
     }
 
@@ -401,7 +425,6 @@ impl Simulador {
     //do tempo decorrido, que é o tempo em que a rodada terminou menos o tempo em que a rodada iniciou
     fn contabiliza_estatisticas_n(&mut self, tempo_decorrido : f64) {
         let mut estatisticas_n = NClientes::novo();
-        let n = self.rodada_atual;
 
         estatisticas_n.e_n1 = self.n_clientes.e_n1/tempo_decorrido;
         estatisticas_n.e_n2 = self.n_clientes.e_n2/tempo_decorrido;
@@ -533,52 +556,65 @@ impl Simulador {
     }
 
     //Função que verificar se o intervalo de confiança de 95% já foi atingido na rodada atual
-    fn verifica_confianca_media(&self) {
+    fn verifica_confianca_media(&mut self) {
         let n = self.rodada_atual as f64;
-        
+        /*println!("{}", ((self.estatisticas_clientes_total.v_w1/n) * 1.96)/
+                        (n.sqrt()*(self.estatisticas_clientes_total.e_w1/n)));*/
         if ((self.estatisticas_clientes_total.v_w1/n) * 1.96)/n.sqrt() 
-                < 0.05 * (self.estatisticas_clientes_total.e_w1/n) {
+                < 0.05 * (self.estatisticas_clientes_total.e_w1/n) && !self.confianca_atingida.w1{
+            self.confianca_atingida.w1 = true;
             println!("Atingiu 95% para W1 com {} rodadas", n);
         }
 
         if ((self.estatisticas_clientes_total.v_w2/n) * 1.96)/n.sqrt() 
-                < 0.05 * (self.estatisticas_clientes_total.e_w2/n) {
+                < 0.05 * (self.estatisticas_clientes_total.e_w2/n) && !self.confianca_atingida.w2{
+            self.confianca_atingida.w2 = true;
             println!("Atingiu 95% para W2 com {} rodadas", n);
         }
 
         if ((self.estatisticas_clientes_total.v_t1/n) * 1.96)/n.sqrt() 
-                < 0.05 * (self.estatisticas_clientes_total.e_t1/n) {
+                < 0.05 * (self.estatisticas_clientes_total.e_t1/n) && !self.confianca_atingida.t1{
+            self.confianca_atingida.t1 = true;
             println!("Atingiu 95% para T1 com {} rodadas", n);
         }
 
         if ((self.estatisticas_clientes_total.v_t2/n) * 1.96)/n.sqrt() 
-                < 0.05 * (self.estatisticas_clientes_total.e_t2/n) {
+                < 0.05 * (self.estatisticas_clientes_total.e_t2/n) && !self.confianca_atingida.t2{
+            self.confianca_atingida.t2 = true;
             println!("Atingiu 95% para T2 com {} rodadas", n);
         }
 
-        let mut desvio_padrao = 0.0;
+        let mut desvio_padrao : f64;
 
         desvio_padrao = self.n_clientes_total.v_n1/(n-1.0) + self.n_clientes_total.e_n1.powi(2)/(n*(n-1.0));
         desvio_padrao = desvio_padrao.sqrt();
-        if (desvio_padrao * 1.96)/n.sqrt() < 0.05 * (self.n_clientes_total.e_n1/n) {
+        if (desvio_padrao * 1.96)/n.sqrt() < 0.05 * (self.n_clientes_total.e_n1/n) &&
+                !self.confianca_atingida.n1 {
+            self.confianca_atingida.n1 = true;
             println!("Atingiu 95% para N1 com {} rodadas", n);
         }
 
         desvio_padrao = self.n_clientes_total.v_n2/(n-1.0) + self.n_clientes_total.e_n2.powi(2)/(n*(n-1.0));
         desvio_padrao = desvio_padrao.sqrt();
-        if (desvio_padrao * 1.96)/n.sqrt() < 0.05 * (self.n_clientes_total.e_n2/n) {
+        if (desvio_padrao * 1.96)/n.sqrt() < 0.05 * (self.n_clientes_total.e_n2/n) &&
+                !self.confianca_atingida.n2 {
+            self.confianca_atingida.n2 = true;
             println!("Atingiu 95% para N2 com {} rodadas", n);
         }
 
         desvio_padrao = self.n_clientes_total.v_nq1/(n-1.0) + self.n_clientes_total.e_nq1.powi(2)/(n*(n-1.0));
         desvio_padrao = desvio_padrao.sqrt();
-        if (desvio_padrao * 1.96)/n.sqrt() < 0.05 * (self.n_clientes_total.e_nq1/n) {
+        if (desvio_padrao * 1.96)/n.sqrt() < 0.05 * (self.n_clientes_total.e_nq1/n) &&
+                !self.confianca_atingida.nq1{
+            self.confianca_atingida.nq1 = true;
             println!("Atingiu 95% para Nq1 com {} rodadas", n);
         }
 
         desvio_padrao = self.n_clientes_total.v_nq2/(n-1.0) + self.n_clientes_total.e_nq2.powi(2)/(n*(n-1.0));
         desvio_padrao = desvio_padrao.sqrt();
-        if (desvio_padrao * 1.96)/n.sqrt() < 0.05 * (self.n_clientes_total.e_nq2/n) {
+        if (desvio_padrao * 1.96)/n.sqrt() < 0.05 * (self.n_clientes_total.e_nq2/n) &&
+                !self.confianca_atingida.nq2{
+            self.confianca_atingida.nq2 = true;
             println!("Atingiu 95% para Nq2 com {} rodadas", n);
         }
     }
