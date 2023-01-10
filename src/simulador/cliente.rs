@@ -23,7 +23,7 @@ pub struct Cliente{
 
 impl Cliente{
     //Cria um novo cliente
-    pub fn novo(chegada:f64, servico_1 : f64, servico_2: f64, cor : Cor) -> Self{
+    pub fn novo(chegada:f64, servico_1 : f64, servico_2: f64, cor : Cor, rodada : usize) -> Self{
         Self{
             chegada,
             servico_1,
@@ -31,7 +31,7 @@ impl Cliente{
             resta_servico_2 : servico_2,
             termina_1 : -1.0,
             termina_2 :-1.0,
-            rodada : 0,
+            rodada,
             cor
         }
     }

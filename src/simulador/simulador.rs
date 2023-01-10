@@ -2,6 +2,12 @@ use std::collections::VecDeque;
 
 use super::{enums::{Cor, TipoEvento}, cliente::Cliente, evento::Evento, estatisticas::{exponencial::AmostraExp, numero_clientes::NClientes, espera::EstatisticasEspera}};
 
+const RHO_02 : usize =  1_000;
+const RHO_04 : usize =  6_000;
+const RHO_06 : usize =  8_000;
+const RHO_08 : usize =  4_000;
+const RHO_09 : usize =  10_000;
+
 pub struct Simulador{
     //Será Some(Cliente) caso exista um cliente em serviço
     //e será None caso não exista cliente em seviço
@@ -20,6 +26,8 @@ pub struct Simulador{
     lambda : f64,
     //taxa da exponencial que representa a duração dos serviços do cliente
     mu : f64,
+    //taxa de utilização informada na inicialização do simulador
+    rho : f64,
     //estrutura que cuida da geração de números aleatórios com distribuição exponencial
     gera_exp : AmostraExp,
     //contador que armazena a quantidade de chegadas que ocorreram na rodada atual
@@ -31,8 +39,12 @@ pub struct Simulador{
     //Estrutura que contabiliza as alterações de número de clientes no sistema a cada execução de eventos
     //e as médias dessas estatísticas ao fim das rodadas
     n_clientes : NClientes,
+    //Estrutura que armazena as estatísticas N1, N2, Nq1 e Nq2 de todas as rodadas
+    n_clientes_total : Vec<NClientes>,
     //Estrutura de dados que contabiliza as estatísticas dos clientes a cada fim de rodada
-    estatisticas_clientes : EstatisticasEspera,
+    estatisticas_clientes_rodada : EstatisticasEspera,
+    //Estrutura de dados que armazena as estatísticas de espera dos clientes de todas as rodadas
+    estatisticas_clientes_total : Vec<EstatisticasEspera>,
     //Armazena o número da rodada atual
     rodada_atual : usize,
     //Armazena a quantidade total de rodadas solicitadas pelo usuário
@@ -51,12 +63,15 @@ impl Simulador {
             tempo: 0.0, 
             lambda:rho/2.0, 
             mu:1.0,
+            rho,
             gera_exp : AmostraExp::novo(false,0),
             n_chegadas: 0,
             max_chegadas,
             esta_ocioso : true,
             n_clientes : NClientes::novo(),
-            estatisticas_clientes : EstatisticasEspera::novo(),
+            n_clientes_total : Vec::new(),
+            estatisticas_clientes_rodada : EstatisticasEspera::novo(),
+            estatisticas_clientes_total : Vec::new(),
             rodada_atual : 0,
             max_rodadas
         }
@@ -73,34 +88,76 @@ impl Simulador {
             tempo: 0.0, 
             lambda : rho/2.0, 
             mu : 1.0,
+            rho,
             gera_exp : AmostraExp::novo(true, seed),
             n_chegadas: 0,
             max_chegadas,
             esta_ocioso : true,
             n_clientes : NClientes::novo(),
-            estatisticas_clientes : EstatisticasEspera::novo(),
+            n_clientes_total : Vec::new(),
+            estatisticas_clientes_rodada : EstatisticasEspera::novo(),
+            estatisticas_clientes_total : Vec::new(),
             rodada_atual : 0,
             max_rodadas
         }
     }
 
+    //Função que executa a simulação
     pub fn roda_simulacao(&mut self){
+        //lida com a execução do periodo transiente
         self.trata_periodo_transiente();
-        self.inicia_rodada()
+        //enquanto o número da rodada atual for menor que a quantidade de rodadas do input, novas rodadas são geradas
+        while self.rodada_atual < self.max_rodadas {
+            //armazena o tempo em que a rodada inicia
+            let tempo_inicio = self.tempo;
+            self.inicia_rodada();
+            //coleta as estatísticas de tempo de espera dos clientes da rodada
+            self.coleta_estatisticas_cliente();
+            //contabiliza as estatísticas N1, N2, Nq1 e Nq2 da rodada usando o tempo decorrido como sendo o tempo do
+            //fim da rodada meno o inicio da rodada
+            self.contabiliza_estatisticas_n(self.tempo - tempo_inicio);
+        }
     }
 
+
+    //Função que trata do periodo transiente, ou seja, elimina um número de chegadas determinado
+    //a depender do valor de rho inputado
     pub fn trata_periodo_transiente(&mut self){
-    }
+        //Calcula o tamanho da fase transiente dependendo do rho fornecido
+        let tamanho_fase = Self::tamanho_fase_transiente(self.rho);
 
-    //Função que inicia as rodadas e grava as estatísticas obtidas nas variáveis de estado do servidor
-    pub fn inicia_rodada(&mut self){
         let amostra_chegada = self.gera_exp.amostra_exp(self.lambda);
         //Adiciona a chegada inicial à lista de eventos
         self.adiciona_evento(Evento::novo(TipoEvento::CHEGADA, 
             self.tempo + amostra_chegada, 
             self.tempo));
+
+        //Continua a tratar eventos até que a lista de eventos esvazie(bug) ou que a fase transiente acabe
+        while &mut self.lista_eventos.len() > &mut 0 && self.n_chegadas < tamanho_fase {
+            //Verifica se o evento é uma chegada
+            if matches!(self.trata_evento().tipo, TipoEvento::CHEGADA) {
+                //Incrementa o contador de chegadas por rodada
+                self.n_chegadas += 1;
+            }
+        }
+        //Atualiza a contagem de N1, N2, Nq1 e Nq2 atuais da fila ao fim da fase transiente para que suas
+        //médias possam ser calculadas mais adiante
+        self.atualiza_contagem_clientes();
+    }
+
+    //Função que inicia as rodadas e grava as estatísticas obtidas nas variáveis de estado do servidor
+    pub fn inicia_rodada(&mut self) {
+        //incrementa o número da rodada atual
+        self.rodada_atual += 1;
+        //zera o contador de chegadas por rodada
+        self.n_chegadas = 0;
+
+        //Trata eventos enquanto o número de chegadas da rodada não ultrapassar o máximo estipulado como input
+        //do simulador
         while &mut self.lista_eventos.len() > &mut 0 && self.n_chegadas < self.max_chegadas{
-            self.trata_evento();
+            if matches!(self.trata_evento().tipo, TipoEvento::CHEGADA){
+                self.n_chegadas += 1;
+            }
         }
     }
     //Retorna o próximo evento a ser tratado da lista de eventos
@@ -137,7 +194,8 @@ impl Simulador {
                 TipoEvento::FimServico1 => self.trata_fim_1(evento_atual),
                 TipoEvento::FimServico2 => self.trata_fim_2(evento_atual)
             };
-            self.contabiliza_clientes();
+            //Contabiliza as estatísticas N1, N2, Nq1 e Nq2 somente se estiver fora da fase transiente
+            if self.rodada_atual != 0 {self.contabiliza_clientes();}
             return  evento_atual;
         }else{//Caso não existam eventos na lista de eventos
             panic!("Erro: tentando recuperar evento atual com a lista vazia");
@@ -241,7 +299,10 @@ impl Simulador {
             }
 
             //Contabiliza todas as estatísticas do cliente que acaba de deixar o sistema
-            self.contabiliza_estatisticas_cliente();
+            //se o mesmo pertencer à rodada atual
+            if self.rodada_atual != 0 && cliente_atual.rodada == self.rodada_atual{
+                self.contabiliza_estatisticas_cliente();
+            }
 
             //Caso a fila 2 esteja vazia
             if self.fila_2.is_empty(){
@@ -298,7 +359,7 @@ impl Simulador {
         let tempo_servico_2 = self.gera_exp.amostra_exp(self.mu);
         //Cria a instância de cliente, com seu tempo de chagada sendo o tempo atual do sistema
         //seus tempos de serviço gerados a partir de amostras exponenciais e sua cor sendo Branca
-        Cliente::novo(self.tempo, tempo_servico_1, tempo_servico_2, Cor::BRANCO)
+        Cliente::novo(self.tempo, tempo_servico_1, tempo_servico_2, Cor::BRANCO, self.rodada_atual)
     }
 
     //Contabiliza as estatísticas correspondentes às médias do número de clientes na fila
@@ -336,17 +397,37 @@ impl Simulador {
         }
     }
 
+    //Contabiliza as estatísticas E[N1], E[N2], E[Nq1] e E[Nq2] da rodada a partir
+    //do tempo decorrido, que é o tempo em que a rodada terminou menos o tempo em que a rodada iniciou
+    fn contabiliza_estatisticas_n(&mut self, tempo_decorrido : f64) {
+        let mut estatisticas_n = NClientes::novo();
+        
+        estatisticas_n.e_n1 = self.n_clientes.e_n1/tempo_decorrido;
+        estatisticas_n.e_n2 = self.n_clientes.e_n2/tempo_decorrido;
+        estatisticas_n.e_nq1 = self.n_clientes.e_nq1/tempo_decorrido;
+        estatisticas_n.e_nq2 = self.n_clientes.e_nq2/tempo_decorrido;
+
+        //Zera as estatísticas acumuladas na rodada atual
+        self.n_clientes.e_n1 = 0.0;
+        self.n_clientes.e_n2 = 0.0;
+        self.n_clientes.e_nq1 = 0.0;
+        self.n_clientes.e_nq2 = 0.0;
+
+        //Armazena as estatísticas da rodada atual na variável de estado do servidor
+        self.n_clientes_total.push(estatisticas_n);
+    }
+
     //Registra no estado do simulador as estatísticas de um cliente que acaba de deixar o sistema
     fn contabiliza_estatisticas_cliente(&mut self) {
         if let Some(cliente) = self.ocupa_servidor{
-            self.estatisticas_clientes.e_t1 += cliente.tempo_t1();
-            self.estatisticas_clientes.e_t2 += cliente.tempo_t2();
-            self.estatisticas_clientes.e_w1 += cliente.tempo_w1();
-            self.estatisticas_clientes.e_w2 += cliente.tempo_w2();
-            self.estatisticas_clientes.e_x1 += cliente.servico_1;
-            self.estatisticas_clientes.e_x2 += cliente.servico_2;
-            self.estatisticas_clientes.v_w1 += cliente.servico_1.powi(2);
-            self.estatisticas_clientes.v_w2 += cliente.servico_2.powi(2);
+            self.estatisticas_clientes_rodada.e_t1 += cliente.tempo_t1();
+            self.estatisticas_clientes_rodada.e_t2 += cliente.tempo_t2();
+            self.estatisticas_clientes_rodada.e_w1 += cliente.tempo_w1();
+            self.estatisticas_clientes_rodada.e_w2 += cliente.tempo_w2();
+            self.estatisticas_clientes_rodada.e_x1 += cliente.servico_1;
+            self.estatisticas_clientes_rodada.e_x2 += cliente.servico_2;
+            self.estatisticas_clientes_rodada.v_w1 += cliente.servico_1.powi(2);
+            self.estatisticas_clientes_rodada.v_w2 += cliente.servico_2.powi(2);
         }
     }
 
@@ -376,5 +457,43 @@ impl Simulador {
                 }
             }
         }
+    }
+
+    //Retorna o tamanho da fase transiente dependendo do valor de rho informado na inicialização do simulador
+    //o tamanho da fase foi obtido através da análise contida no relatório. Caso o rho especificado não seja
+    //nenhum dos que foram analisados, utilizaremos o maior intervalo dos 5, ou seja, o de rho = 0.9(10000 chegadas)
+    fn tamanho_fase_transiente(rho : f64) -> usize {
+        match rho.to_string().as_str() {
+            "0.2" => {RHO_02},
+            "0.4" => {RHO_04},
+            "0.6" => {RHO_06},
+            "0.8" => {RHO_08},
+            "0.9" => {RHO_09},
+            //Caso o rho não seja um dos estudados, o intervalo será o maior dos 5
+            _ => {RHO_09}
+        }
+    }
+
+    //realiza a coleta das estatísticas de espera dos clientes ao fim de cada rodada
+    fn coleta_estatisticas_cliente(&mut self) {
+        let mut estatisticas_rodada = EstatisticasEspera::novo();
+        let n = self.max_chegadas as f64;
+        estatisticas_rodada.e_t1 = self.estatisticas_clientes_rodada.e_t1/n;
+        estatisticas_rodada.e_t2 = self.estatisticas_clientes_rodada.e_t2/n;
+        estatisticas_rodada.e_w1 = self.estatisticas_clientes_rodada.e_w1/n;
+        estatisticas_rodada.e_w2 = self.estatisticas_clientes_rodada.e_t2/n;
+        estatisticas_rodada.e_x1 = self.estatisticas_clientes_rodada.e_x1/n;
+        estatisticas_rodada.e_x2 = self.estatisticas_clientes_rodada.e_x2/n;
+        
+        estatisticas_rodada.v_w1 = self.estatisticas_clientes_rodada.v_w1/(n - 1.0);
+        estatisticas_rodada.v_w1 += self.estatisticas_clientes_rodada.e_x1.powi(2)/(n*(n-1.0));
+
+        estatisticas_rodada.v_w2 = self.estatisticas_clientes_rodada.v_w2/(n - 1.0);
+        estatisticas_rodada.v_w2 += self.estatisticas_clientes_rodada.e_x2.powi(2)/(n*(n-1.0));
+
+        //Zera as estatísticas acumuladas até agora na rodada atual, para que as da próxima rodada possa ser calculada em seguida
+        self.estatisticas_clientes_rodada = EstatisticasEspera::novo();
+        //Armazena as estatísticas coletadas na variável de estado do servidor
+        self.estatisticas_clientes_total.push(estatisticas_rodada);
     }
 }
