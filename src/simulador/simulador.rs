@@ -40,11 +40,11 @@ pub struct Simulador{
     //e as médias dessas estatísticas ao fim das rodadas
     n_clientes : NClientes,
     //Estrutura que armazena as estatísticas N1, N2, Nq1 e Nq2 de todas as rodadas
-    n_clientes_total : Vec<NClientes>,
+    n_clientes_total : NClientes,
     //Estrutura de dados que contabiliza as estatísticas dos clientes a cada fim de rodada
     estatisticas_clientes_rodada : EstatisticasEspera,
     //Estrutura de dados que armazena as estatísticas de espera dos clientes de todas as rodadas
-    estatisticas_clientes_total : Vec<EstatisticasEspera>,
+    estatisticas_clientes_total : EstatisticasEspera,
     //Armazena o número da rodada atual
     rodada_atual : usize,
     //Armazena a quantidade total de rodadas solicitadas pelo usuário
@@ -69,9 +69,9 @@ impl Simulador {
             max_chegadas,
             esta_ocioso : true,
             n_clientes : NClientes::novo(),
-            n_clientes_total : Vec::new(),
-            estatisticas_clientes_rodada : EstatisticasEspera::novo(),
-            estatisticas_clientes_total : Vec::new(),
+            n_clientes_total : NClientes::novo(),
+            estatisticas_clientes_rodada: EstatisticasEspera::novo(),
+            estatisticas_clientes_total : EstatisticasEspera::novo(),
             rodada_atual : 0,
             max_rodadas
         }
@@ -94,9 +94,9 @@ impl Simulador {
             max_chegadas,
             esta_ocioso : true,
             n_clientes : NClientes::novo(),
-            n_clientes_total : Vec::new(),
+            n_clientes_total : NClientes::novo(),
             estatisticas_clientes_rodada : EstatisticasEspera::novo(),
-            estatisticas_clientes_total : Vec::new(),
+            estatisticas_clientes_total : EstatisticasEspera::novo(),
             rodada_atual : 0,
             max_rodadas
         }
@@ -401,7 +401,8 @@ impl Simulador {
     //do tempo decorrido, que é o tempo em que a rodada terminou menos o tempo em que a rodada iniciou
     fn contabiliza_estatisticas_n(&mut self, tempo_decorrido : f64) {
         let mut estatisticas_n = NClientes::novo();
-        
+        let n = self.rodada_atual;
+
         estatisticas_n.e_n1 = self.n_clientes.e_n1/tempo_decorrido;
         estatisticas_n.e_n2 = self.n_clientes.e_n2/tempo_decorrido;
         estatisticas_n.e_nq1 = self.n_clientes.e_nq1/tempo_decorrido;
@@ -413,8 +414,18 @@ impl Simulador {
         self.n_clientes.e_nq1 = 0.0;
         self.n_clientes.e_nq2 = 0.0;
 
-        //Armazena as estatísticas da rodada atual na variável de estado do servidor
-        self.n_clientes_total.push(estatisticas_n);
+        //Incrementa as estatísticas de média rodada atual na variável de estado do servidor
+        self.n_clientes_total.e_n1 += estatisticas_n.e_n1;
+        self.n_clientes_total.e_n2 += estatisticas_n.e_n2;
+        self.n_clientes_total.e_nq1 += estatisticas_n.e_nq1;
+        self.n_clientes_total.e_nq2 += estatisticas_n.e_nq2;
+        
+
+        //Incrementa as estatísticas do quadrado das amostras da rodada para cálculo posterior da variância
+        self.n_clientes_total.v_n1 += estatisticas_n.e_n1.powi(2);
+        self.n_clientes_total.v_n2 += estatisticas_n.e_n2.powi(2);
+        self.n_clientes_total.v_nq1 += estatisticas_n.e_nq1.powi(2);
+        self.n_clientes_total.v_nq2 += estatisticas_n.e_nq2.powi(2);
     }
 
     //Registra no estado do simulador as estatísticas de um cliente que acaba de deixar o sistema
@@ -426,8 +437,10 @@ impl Simulador {
             self.estatisticas_clientes_rodada.e_w2 += cliente.tempo_w2();
             self.estatisticas_clientes_rodada.e_x1 += cliente.servico_1;
             self.estatisticas_clientes_rodada.e_x2 += cliente.servico_2;
-            self.estatisticas_clientes_rodada.v_w1 += cliente.servico_1.powi(2);
-            self.estatisticas_clientes_rodada.v_w2 += cliente.servico_2.powi(2);
+            self.estatisticas_clientes_rodada.v_w1 += cliente.tempo_w1().powi(2);
+            self.estatisticas_clientes_rodada.v_w2 += cliente.tempo_w2().powi(2);
+            self.estatisticas_clientes_rodada.v_t1 += cliente.tempo_t1().powi(2);
+            self.estatisticas_clientes_rodada.v_t2 += cliente.tempo_t2().powi(2);
         }
     }
 
@@ -478,6 +491,7 @@ impl Simulador {
     fn coleta_estatisticas_cliente(&mut self) {
         let mut estatisticas_rodada = EstatisticasEspera::novo();
         let n = self.max_chegadas as f64;
+        //Acumula as estatísticas de média
         estatisticas_rodada.e_t1 = self.estatisticas_clientes_rodada.e_t1/n;
         estatisticas_rodada.e_t2 = self.estatisticas_clientes_rodada.e_t2/n;
         estatisticas_rodada.e_w1 = self.estatisticas_clientes_rodada.e_w1/n;
@@ -485,15 +499,87 @@ impl Simulador {
         estatisticas_rodada.e_x1 = self.estatisticas_clientes_rodada.e_x1/n;
         estatisticas_rodada.e_x2 = self.estatisticas_clientes_rodada.e_x2/n;
         
+        //Acumula a estatística de variância de w1
         estatisticas_rodada.v_w1 = self.estatisticas_clientes_rodada.v_w1/(n - 1.0);
-        estatisticas_rodada.v_w1 += self.estatisticas_clientes_rodada.e_x1.powi(2)/(n*(n-1.0));
+        estatisticas_rodada.v_w1 += self.estatisticas_clientes_rodada.e_w1.powi(2)/(n*(n-1.0));
 
+        //Acumula a estatística de variância de w2
         estatisticas_rodada.v_w2 = self.estatisticas_clientes_rodada.v_w2/(n - 1.0);
-        estatisticas_rodada.v_w2 += self.estatisticas_clientes_rodada.e_x2.powi(2)/(n*(n-1.0));
+        estatisticas_rodada.v_w2 += self.estatisticas_clientes_rodada.e_w2.powi(2)/(n*(n-1.0));
+
+        //Acumula a estatística de variância de t1
+        estatisticas_rodada.v_t1 = self.estatisticas_clientes_rodada.v_t1/(n - 1.0);
+        estatisticas_rodada.v_t1 += self.estatisticas_clientes_rodada.e_t1.powi(2)/(n*(n-1.0));
+
+        //Acumula a estatística de variância de t2
+        estatisticas_rodada.v_t2 = self.estatisticas_clientes_rodada.v_t2/(n - 1.0);
+        estatisticas_rodada.v_t2 += self.estatisticas_clientes_rodada.e_t2.powi(2)/(n*(n-1.0));        
 
         //Zera as estatísticas acumuladas até agora na rodada atual, para que as da próxima rodada possa ser calculada em seguida
         self.estatisticas_clientes_rodada = EstatisticasEspera::novo();
-        //Armazena as estatísticas coletadas na variável de estado do servidor
-        self.estatisticas_clientes_total.push(estatisticas_rodada);
+        //Incrementa as estatísticas coletadas na variável de estado do servidor
+        self.estatisticas_clientes_total.e_t1 += estatisticas_rodada.e_t1;
+        self.estatisticas_clientes_total.e_t2 += estatisticas_rodada.e_t2;
+        self.estatisticas_clientes_total.e_w1 += estatisticas_rodada.e_w1;
+        self.estatisticas_clientes_total.e_w2 += estatisticas_rodada.e_w2;
+        self.estatisticas_clientes_total.e_x1 += estatisticas_rodada.e_x1;
+        self.estatisticas_clientes_total.e_x2 += estatisticas_rodada.e_x2;
+
+        //Incrementa o desvio padrão, que possibilita futuramente obter também a variância amostral
+        self.estatisticas_clientes_total.v_w1 += estatisticas_rodada.v_w1.sqrt();
+        self.estatisticas_clientes_total.v_w2 += estatisticas_rodada.v_w2.sqrt();
+        self.estatisticas_clientes_total.v_t1 += estatisticas_rodada.v_t1.sqrt();
+        self.estatisticas_clientes_total.v_t2 += estatisticas_rodada.v_t2.sqrt();
+    }
+
+    //Função que verificar se o intervalo de confiança de 95% já foi atingido na rodada atual
+    fn verifica_confianca_media(&self) {
+        let n = self.rodada_atual as f64;
+        
+        if ((self.estatisticas_clientes_total.v_w1/n) * 1.96)/n.sqrt() 
+                < 0.05 * (self.estatisticas_clientes_total.e_w1/n) {
+            println!("Atingiu 95% para W1 com {} rodadas", n);
+        }
+
+        if ((self.estatisticas_clientes_total.v_w2/n) * 1.96)/n.sqrt() 
+                < 0.05 * (self.estatisticas_clientes_total.e_w2/n) {
+            println!("Atingiu 95% para W2 com {} rodadas", n);
+        }
+
+        if ((self.estatisticas_clientes_total.v_t1/n) * 1.96)/n.sqrt() 
+                < 0.05 * (self.estatisticas_clientes_total.e_t1/n) {
+            println!("Atingiu 95% para T1 com {} rodadas", n);
+        }
+
+        if ((self.estatisticas_clientes_total.v_t2/n) * 1.96)/n.sqrt() 
+                < 0.05 * (self.estatisticas_clientes_total.e_t2/n) {
+            println!("Atingiu 95% para T2 com {} rodadas", n);
+        }
+
+        let mut desvio_padrao = 0.0;
+
+        desvio_padrao = self.n_clientes_total.v_n1/(n-1.0) + self.n_clientes_total.e_n1.powi(2)/(n*(n-1.0));
+        desvio_padrao = desvio_padrao.sqrt();
+        if (desvio_padrao * 1.96)/n.sqrt() < 0.05 * (self.n_clientes_total.e_n1/n) {
+            println!("Atingiu 95% para N1 com {} rodadas", n);
+        }
+
+        desvio_padrao = self.n_clientes_total.v_n2/(n-1.0) + self.n_clientes_total.e_n2.powi(2)/(n*(n-1.0));
+        desvio_padrao = desvio_padrao.sqrt();
+        if (desvio_padrao * 1.96)/n.sqrt() < 0.05 * (self.n_clientes_total.e_n2/n) {
+            println!("Atingiu 95% para N2 com {} rodadas", n);
+        }
+
+        desvio_padrao = self.n_clientes_total.v_nq1/(n-1.0) + self.n_clientes_total.e_nq1.powi(2)/(n*(n-1.0));
+        desvio_padrao = desvio_padrao.sqrt();
+        if (desvio_padrao * 1.96)/n.sqrt() < 0.05 * (self.n_clientes_total.e_nq1/n) {
+            println!("Atingiu 95% para Nq1 com {} rodadas", n);
+        }
+
+        desvio_padrao = self.n_clientes_total.v_nq2/(n-1.0) + self.n_clientes_total.e_nq2.powi(2)/(n*(n-1.0));
+        desvio_padrao = desvio_padrao.sqrt();
+        if (desvio_padrao * 1.96)/n.sqrt() < 0.05 * (self.n_clientes_total.e_nq2/n) {
+            println!("Atingiu 95% para Nq2 com {} rodadas", n);
+        }
     }
 }

@@ -16,6 +16,14 @@ pub struct NClientes{
     pub e_n2 : f64,
     //Média de clientes na fila 2
     pub e_nq2 : f64,
+    //Acumula o desvio padrão de todas as rodadas até a atual
+    pub v_n1 : f64,
+    //Acumula o desvio padrão de todas as rodadas até a atual
+    pub v_n2 : f64,
+    //Acumula o desvio padrão de todas as rodadas até a atual
+    pub v_nq1 : f64,
+    //Acumula o desvio padrão de todas as rodadas até a atual
+    pub v_nq2 : f64,
     //Instante de tempo em que a fila passou a ter os valores acima
     pub t : f64
 }
@@ -31,6 +39,10 @@ impl NClientes {
             e_n2 : 0.0,
             nq2 : 0,
             e_nq2 : 0.0,
+            v_n1 : 0.0,
+            v_n2 : 0.0,
+            v_nq1 : 0.0,
+            v_nq2 : 0.0,
             t : 0.0
         }
     }

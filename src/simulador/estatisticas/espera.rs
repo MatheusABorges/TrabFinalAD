@@ -8,6 +8,8 @@ pub struct EstatisticasEspera{
     pub e_t2 : f64,
     pub v_w1 : f64,
     pub v_w2 : f64,
+    pub v_t1 : f64,
+    pub v_t2 : f64
 }
 
 impl EstatisticasEspera {
@@ -20,7 +22,9 @@ impl EstatisticasEspera {
             e_t1 : 0.0,
             e_t2 : 0.0,
             v_w1 : 0.0,
-            v_w2 : 0.0
+            v_w2 : 0.0,
+            v_t1 : 0.0,
+            v_t2 : 0.0
         }
     }
 }
