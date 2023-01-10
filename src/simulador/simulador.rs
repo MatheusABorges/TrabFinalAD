@@ -16,12 +16,17 @@ struct  ConfiancaAtingida{
     n1 : bool,
     n2 : bool,
     nq1 : bool,
-    nq2 : bool
+    nq2 : bool,
+    finalizou : bool
 }
 
 impl ConfiancaAtingida {
     fn novo() -> Self {
-        Self { w1: false, w2: false, t1: false, t2: false, n1: false, n2: false, nq1: false, nq2: false }
+        Self { w1: false, w2: false, t1: false, t2: false, n1: false, n2: false, nq1: false, nq2: false,finalizou:false}
+    }
+
+    fn todas_confiancas_atingidas(&self) -> bool {
+        self.w1 && self.w2 && self.t1 && self.t2 && self.n1 && self.n2 && self.nq1 && self.nq2 && !self.finalizou
     }
 }
 
@@ -563,25 +568,37 @@ impl Simulador {
         if ((self.estatisticas_clientes_total.v_w1/n) * 1.96)/n.sqrt() 
                 < 0.05 * (self.estatisticas_clientes_total.e_w1/n) && !self.confianca_atingida.w1{
             self.confianca_atingida.w1 = true;
-            println!("Atingiu 95% para W1 com {} rodadas", n);
+            if self.confianca_atingida.todas_confiancas_atingidas(){
+                self.confianca_atingida.finalizou = true;
+                println!("Atingiu 95% para W1 com {} rodadas", n);
+            }
         }
 
         if ((self.estatisticas_clientes_total.v_w2/n) * 1.96)/n.sqrt() 
                 < 0.05 * (self.estatisticas_clientes_total.e_w2/n) && !self.confianca_atingida.w2{
             self.confianca_atingida.w2 = true;
-            println!("Atingiu 95% para W2 com {} rodadas", n);
+            if self.confianca_atingida.todas_confiancas_atingidas(){
+                self.confianca_atingida.finalizou = true;
+                println!("Atingiu 95% para W2 com {} rodadas", n);
+            }
         }
 
         if ((self.estatisticas_clientes_total.v_t1/n) * 1.96)/n.sqrt() 
                 < 0.05 * (self.estatisticas_clientes_total.e_t1/n) && !self.confianca_atingida.t1{
             self.confianca_atingida.t1 = true;
-            println!("Atingiu 95% para T1 com {} rodadas", n);
+            if self.confianca_atingida.todas_confiancas_atingidas(){
+                self.confianca_atingida.finalizou = true;
+                println!("Atingiu 95% para T1 com {} rodadas", n);
+            }
         }
 
         if ((self.estatisticas_clientes_total.v_t2/n) * 1.96)/n.sqrt() 
                 < 0.05 * (self.estatisticas_clientes_total.e_t2/n) && !self.confianca_atingida.t2{
             self.confianca_atingida.t2 = true;
-            println!("Atingiu 95% para T2 com {} rodadas", n);
+            if self.confianca_atingida.todas_confiancas_atingidas(){
+                self.confianca_atingida.finalizou = true;
+                println!("Atingiu 95% para T2 com {} rodadas", n);
+            }
         }
 
         let mut desvio_padrao : f64;
@@ -591,7 +608,10 @@ impl Simulador {
         if (desvio_padrao * 1.96)/n.sqrt() < 0.05 * (self.n_clientes_total.e_n1/n) &&
                 !self.confianca_atingida.n1 {
             self.confianca_atingida.n1 = true;
-            println!("Atingiu 95% para N1 com {} rodadas", n);
+            if self.confianca_atingida.todas_confiancas_atingidas(){
+                self.confianca_atingida.finalizou = true;
+                println!("Atingiu 95% para N1 com {} rodadas", n);
+            }
         }
 
         desvio_padrao = self.n_clientes_total.v_n2/(n-1.0) + self.n_clientes_total.e_n2.powi(2)/(n*(n-1.0));
@@ -599,7 +619,10 @@ impl Simulador {
         if (desvio_padrao * 1.96)/n.sqrt() < 0.05 * (self.n_clientes_total.e_n2/n) &&
                 !self.confianca_atingida.n2 {
             self.confianca_atingida.n2 = true;
-            println!("Atingiu 95% para N2 com {} rodadas", n);
+            if self.confianca_atingida.todas_confiancas_atingidas(){
+                self.confianca_atingida.finalizou = true;
+                println!("Atingiu 95% para N2 com {} rodadas", n);
+            }
         }
 
         desvio_padrao = self.n_clientes_total.v_nq1/(n-1.0) + self.n_clientes_total.e_nq1.powi(2)/(n*(n-1.0));
@@ -607,7 +630,10 @@ impl Simulador {
         if (desvio_padrao * 1.96)/n.sqrt() < 0.05 * (self.n_clientes_total.e_nq1/n) &&
                 !self.confianca_atingida.nq1{
             self.confianca_atingida.nq1 = true;
-            println!("Atingiu 95% para Nq1 com {} rodadas", n);
+            if self.confianca_atingida.todas_confiancas_atingidas(){
+                self.confianca_atingida.finalizou = true;
+                println!("Atingiu 95% para Nq1 com {} rodadas", n);
+            }
         }
 
         desvio_padrao = self.n_clientes_total.v_nq2/(n-1.0) + self.n_clientes_total.e_nq2.powi(2)/(n*(n-1.0));
@@ -615,7 +641,10 @@ impl Simulador {
         if (desvio_padrao * 1.96)/n.sqrt() < 0.05 * (self.n_clientes_total.e_nq2/n) &&
                 !self.confianca_atingida.nq2{
             self.confianca_atingida.nq2 = true;
-            println!("Atingiu 95% para Nq2 com {} rodadas", n);
+            if self.confianca_atingida.todas_confiancas_atingidas(){
+                self.confianca_atingida.finalizou = true;
+                println!("Atingiu 95% para Nq2 com {} rodadas", n);
+            }
         }
     }
 }
