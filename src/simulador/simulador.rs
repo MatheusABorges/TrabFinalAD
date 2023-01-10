@@ -7,6 +7,7 @@ const RHO_04 : usize =  6_000;
 const RHO_06 : usize =  8_000;
 const RHO_08 : usize =  4_000;
 const RHO_09 : usize =  10_000;
+const PERCENTIL_TSTUDENT : f64 = 1.96;
 
 struct  ConfiancaAtingida{
     w1 : bool,
@@ -72,12 +73,16 @@ pub struct Simulador{
     //Armazena a quantidade total de rodadas solicitadas pelo usuário
     max_rodadas : usize,
     //Serve para verificar caso o intervalo de confiança de 95% já foi atingido para uma certa métrica
-    confianca_atingida : ConfiancaAtingida
+    confianca_atingida : ConfiancaAtingida,
+    //Guarda o limte superior do percentil da distribuição chi² passada na criação do simulador
+    chi_sqr_up : f64,
+    //Guarda o limte inferior do percentil da distribuição chi² passada na criação do simulador
+    chi_sqr_low : f64
 }
 
 impl Simulador {
     //Função que retorna um simulador não determinístico com seed fornecida pelo SO
-    pub fn novo(rho : f64, max_chegadas : usize, max_rodadas : usize) -> Self {
+    pub fn novo(rho : f64, max_chegadas : usize, max_rodadas : usize, chi_sqr_up : f64, chi_sqr_low : f64) -> Self {
         Self { 
             ocupa_servidor: None,
             tempo_ocioso: 0.0,
@@ -98,12 +103,14 @@ impl Simulador {
             estatisticas_clientes_total : EstatisticasEspera::novo(),
             rodada_atual : 0,
             max_rodadas,
-            confianca_atingida : ConfiancaAtingida::novo()
+            confianca_atingida : ConfiancaAtingida::novo(),
+            chi_sqr_low,
+            chi_sqr_up
         }
     }
 
     //Função que retorna um simulador determinístico com seed informada na sua criação
-    pub fn novo_det(rho : f64, max_chegadas : usize, max_rodadas : usize, seed: u64) -> Self {
+    pub fn novo_det(rho : f64, max_chegadas : usize, max_rodadas : usize, chi_sqr_up : f64, chi_sqr_low : f64, seed: u64) -> Self {
         Self { 
             ocupa_servidor: None,
             tempo_ocioso: 0.0,
@@ -124,7 +131,9 @@ impl Simulador {
             estatisticas_clientes_total : EstatisticasEspera::novo(),
             rodada_atual : 0,
             max_rodadas,
-            confianca_atingida : ConfiancaAtingida::novo()
+            confianca_atingida : ConfiancaAtingida::novo(),
+            chi_sqr_low,
+            chi_sqr_up
         }
     }
 
@@ -142,10 +151,11 @@ impl Simulador {
             //contabiliza as estatísticas N1, N2, Nq1 e Nq2 da rodada usando o tempo decorrido como sendo o tempo do
             //fim da rodada meno o inicio da rodada
             self.contabiliza_estatisticas_n(self.tempo - tempo_inicio);
-            if self.rodada_atual > 1 {
-                self.verifica_confianca_media();
-            }
+            // if self.rodada_atual > 1 {
+            //     self.verifica_confianca_media();
+            // }
         }
+        self.exibe_resultado();
     }
 
 
@@ -553,6 +563,13 @@ impl Simulador {
         self.estatisticas_clientes_total.e_x1 += estatisticas_rodada.e_x1;
         self.estatisticas_clientes_total.e_x2 += estatisticas_rodada.e_x2;
 
+        //Incrementa as variáveis que acumulam as variâncias por rodada de W1 e W2, para que suas médias sejam
+        //futuramente calculadas e o intervalo de confiança do tipo t-Student seja estabelecido
+        self.estatisticas_clientes_total.e_v_w1_sqr += estatisticas_rodada.v_w1;
+        self.estatisticas_clientes_total.e_v_w2_sqr += estatisticas_rodada.v_w2;
+        self.estatisticas_clientes_total.v_w1_sqr += estatisticas_rodada.v_w1.powi(2);
+        self.estatisticas_clientes_total.v_w2_sqr += estatisticas_rodada.v_w2.powi(2);
+
         //Incrementa o desvio padrão, que possibilita futuramente obter também a variância amostral
         self.estatisticas_clientes_total.v_w1 += estatisticas_rodada.v_w1.sqrt();
         self.estatisticas_clientes_total.v_w2 += estatisticas_rodada.v_w2.sqrt();
@@ -563,9 +580,9 @@ impl Simulador {
     //Função que verificar se o intervalo de confiança de 95% já foi atingido na rodada atual
     fn verifica_confianca_media(&mut self) {
         let n = self.rodada_atual as f64;
-        /*println!("{}", ((self.estatisticas_clientes_total.v_w1/n) * 1.96)/
+        /*println!("{}", ((self.estatisticas_clientes_total.v_w1/n) * PERCENTIL_TSTUDENT)/
                         (n.sqrt()*(self.estatisticas_clientes_total.e_w1/n)));*/
-        if ((self.estatisticas_clientes_total.v_w1/n) * 1.96)/n.sqrt() 
+        if ((self.estatisticas_clientes_total.v_w1/n) * PERCENTIL_TSTUDENT)/n.sqrt() 
                 < 0.05 * (self.estatisticas_clientes_total.e_w1/n) && !self.confianca_atingida.w1{
             self.confianca_atingida.w1 = true;
             if self.confianca_atingida.todas_confiancas_atingidas(){
@@ -574,7 +591,7 @@ impl Simulador {
             }
         }
 
-        if ((self.estatisticas_clientes_total.v_w2/n) * 1.96)/n.sqrt() 
+        if ((self.estatisticas_clientes_total.v_w2/n) * PERCENTIL_TSTUDENT)/n.sqrt() 
                 < 0.05 * (self.estatisticas_clientes_total.e_w2/n) && !self.confianca_atingida.w2{
             self.confianca_atingida.w2 = true;
             if self.confianca_atingida.todas_confiancas_atingidas(){
@@ -583,7 +600,7 @@ impl Simulador {
             }
         }
 
-        if ((self.estatisticas_clientes_total.v_t1/n) * 1.96)/n.sqrt() 
+        if ((self.estatisticas_clientes_total.v_t1/n) * PERCENTIL_TSTUDENT)/n.sqrt() 
                 < 0.05 * (self.estatisticas_clientes_total.e_t1/n) && !self.confianca_atingida.t1{
             self.confianca_atingida.t1 = true;
             if self.confianca_atingida.todas_confiancas_atingidas(){
@@ -592,7 +609,7 @@ impl Simulador {
             }
         }
 
-        if ((self.estatisticas_clientes_total.v_t2/n) * 1.96)/n.sqrt() 
+        if ((self.estatisticas_clientes_total.v_t2/n) * PERCENTIL_TSTUDENT)/n.sqrt() 
                 < 0.05 * (self.estatisticas_clientes_total.e_t2/n) && !self.confianca_atingida.t2{
             self.confianca_atingida.t2 = true;
             if self.confianca_atingida.todas_confiancas_atingidas(){
@@ -605,7 +622,7 @@ impl Simulador {
 
         desvio_padrao = self.n_clientes_total.v_n1/(n-1.0) + self.n_clientes_total.e_n1.powi(2)/(n*(n-1.0));
         desvio_padrao = desvio_padrao.sqrt();
-        if (desvio_padrao * 1.96)/n.sqrt() < 0.05 * (self.n_clientes_total.e_n1/n) &&
+        if (desvio_padrao * PERCENTIL_TSTUDENT)/n.sqrt() < 0.05 * (self.n_clientes_total.e_n1/n) &&
                 !self.confianca_atingida.n1 {
             self.confianca_atingida.n1 = true;
             if self.confianca_atingida.todas_confiancas_atingidas(){
@@ -616,7 +633,7 @@ impl Simulador {
 
         desvio_padrao = self.n_clientes_total.v_n2/(n-1.0) + self.n_clientes_total.e_n2.powi(2)/(n*(n-1.0));
         desvio_padrao = desvio_padrao.sqrt();
-        if (desvio_padrao * 1.96)/n.sqrt() < 0.05 * (self.n_clientes_total.e_n2/n) &&
+        if (desvio_padrao * PERCENTIL_TSTUDENT)/n.sqrt() < 0.05 * (self.n_clientes_total.e_n2/n) &&
                 !self.confianca_atingida.n2 {
             self.confianca_atingida.n2 = true;
             if self.confianca_atingida.todas_confiancas_atingidas(){
@@ -627,7 +644,7 @@ impl Simulador {
 
         desvio_padrao = self.n_clientes_total.v_nq1/(n-1.0) + self.n_clientes_total.e_nq1.powi(2)/(n*(n-1.0));
         desvio_padrao = desvio_padrao.sqrt();
-        if (desvio_padrao * 1.96)/n.sqrt() < 0.05 * (self.n_clientes_total.e_nq1/n) &&
+        if (desvio_padrao * PERCENTIL_TSTUDENT)/n.sqrt() < 0.05 * (self.n_clientes_total.e_nq1/n) &&
                 !self.confianca_atingida.nq1{
             self.confianca_atingida.nq1 = true;
             if self.confianca_atingida.todas_confiancas_atingidas(){
@@ -638,7 +655,7 @@ impl Simulador {
 
         desvio_padrao = self.n_clientes_total.v_nq2/(n-1.0) + self.n_clientes_total.e_nq2.powi(2)/(n*(n-1.0));
         desvio_padrao = desvio_padrao.sqrt();
-        if (desvio_padrao * 1.96)/n.sqrt() < 0.05 * (self.n_clientes_total.e_nq2/n) &&
+        if (desvio_padrao * PERCENTIL_TSTUDENT)/n.sqrt() < 0.05 * (self.n_clientes_total.e_nq2/n) &&
                 !self.confianca_atingida.nq2{
             self.confianca_atingida.nq2 = true;
             if self.confianca_atingida.todas_confiancas_atingidas(){
@@ -646,5 +663,116 @@ impl Simulador {
                 println!("Atingiu 95% para Nq2 com {} rodadas", n);
             }
         }
+    }
+
+    //Função executada ao fim da simulação, a mesma calcula o restante das estatísticas e as exibe na tela
+    fn exibe_resultado(&mut self){
+        let n = self.max_rodadas as f64;
+
+        //Guarda a soma de todos os N1i, N2i, Nq1i e Nq2i colidos em nas rodadas i
+        let mut e_n1 = self.n_clientes_total.e_n1;
+        let mut e_n2 = self.n_clientes_total.e_n2;
+        let mut e_nq1 = self.n_clientes_total.e_nq1;
+        let mut e_nq2 = self.n_clientes_total.e_nq2;
+
+        //Guarda a soma de todos os W1i, W2i, T1i e T2i colidos nas rodadas i e já os divide por N para obtermos os estimadores
+        let e_w1 = self.estatisticas_clientes_total.e_w1/n;
+        let e_w2 = self.estatisticas_clientes_total.e_w2/n;
+        let e_t1 = self.estatisticas_clientes_total.e_t1/n;
+        let e_t2 = self.estatisticas_clientes_total.e_t2/n;
+
+        //Guarda a soma dos N1i², N2i², Nq1i² e Nq2i² acumulados nas rodadas i e os armazena para o futuro cáculo dos estimadores de suas variâncias
+        let mut v_n1 = self.n_clientes_total.v_n1;
+        let mut v_n2 = self.n_clientes_total.v_n2;
+        let mut v_nq1 = self.n_clientes_total.v_nq1;
+        let mut v_nq2 = self.n_clientes_total.v_nq2;
+
+        //Guarda a soma dos desvios padrões de W1i, W2i, T1i e T2i acumulados nas rodadas i e os armazena para futuro cáculo dos estimadores de suas variâncias
+        let dp_w1 = self.estatisticas_clientes_total.v_w1/n;
+        let dp_w2 = self.estatisticas_clientes_total.v_w2/n;
+        let dp_t1 = self.estatisticas_clientes_total.v_t1/n;
+        let dp_t2 = self.estatisticas_clientes_total.v_t2/n;
+
+        //Guarda os valores necessários para calcular os estimadores e intervalos de confiança das médias das variâncias por rodada i de W1i e W2i
+        let mut e_v_w1_sqr= self.estatisticas_clientes_total.v_w1_sqr;
+        let mut e_v_w2_sqr= self.estatisticas_clientes_total.v_w2_sqr;
+        let mut v_w1_sqr = self.estatisticas_clientes_total.e_v_w1_sqr;
+        let mut v_w2_sqr = self.estatisticas_clientes_total.e_v_w2_sqr;
+
+        //Calcula os estimadores das variâncias de N1, N2, Nq1 e Nq2
+        v_n1 = (v_n1/(n-1.0)) + (e_n1.powi(2)/(n*(n-1.0)));
+        v_n2 = (v_n2/(n-1.0)) + (e_n2.powi(2)/(n*(n-1.0)));
+        v_nq1 = (v_nq1/(n-1.0)) + (e_nq1.powi(2)/(n*(n-1.0)));
+        v_nq2 = (v_nq2/(n-1.0)) + (e_nq2.powi(2)/(n*(n-1.0)));
+
+        //Calcula os estimadores das variâncias de E[V(W1i)] e E[V(W2i)]
+        v_w1_sqr = (v_w1_sqr/(n-1.0)) + (e_v_w1_sqr.powi(2)/(n*(n-1.0)));
+        v_w2_sqr = (v_w2_sqr/(n-1.0)) + (e_v_w2_sqr.powi(2)/(n*(n-1.0)));
+
+        //Calcula os estimadores de E[N1], E[N2], E[Nq1], E[Nq2]
+        e_n1 /= n;
+        e_n2 /= n;
+        e_nq1 /= n;
+        e_nq2 /= n;
+
+        //Calcula os estimadores de E[V(W1)], E[V(W2)]
+        e_v_w1_sqr /= n;
+        e_v_w2_sqr /= n;
+
+
+        //Abaixo encontram-se as exibições dos resultados da simulação
+        println!("A simulação foi rodada Para as seguintes entradas:");
+        println!("Rho :                     {}", self.rho);
+        println!("Total de Rodadas :        {}", self.max_rodadas);
+        println!("Chegadas por Rodada:      {}", self.max_chegadas);
+        println!("Percentil Inferior Chi² : {}", self.chi_sqr_low);
+        println!("Percentil Superior Chi² : {}\n", self.chi_sqr_up);
+        println!("A partir das entradas, determinamos os seguintes parâmetros:");
+        println!("Tamanho da Fase Transiente : {}", Self::tamanho_fase_transiente(self.rho));
+        println!("Percentil t-student :        {}\n", PERCENTIL_TSTUDENT);
+        println!("As seguintes estatisticas foram coletadas: ");
+        println!("E[N1]  -> valor: {:.12} | precisão: {:.12}% | intervalo de confiança: ({:.12},{:.12})",
+            e_n1, v_n1.sqrt()*PERCENTIL_TSTUDENT*100.0/(n.sqrt()*e_n1), e_n1-PERCENTIL_TSTUDENT*v_n1.sqrt()/n.sqrt(), e_n1+PERCENTIL_TSTUDENT*v_n1.sqrt()/n.sqrt());
+
+        println!("E[N2]  -> valor: {:.12} | precisão: {:.12}% | intervalo de confiança: ({:.12},{:.12})",
+            e_n2, v_n2.sqrt()*PERCENTIL_TSTUDENT*100.0/(n.sqrt()*e_n2), e_n2-PERCENTIL_TSTUDENT*v_n2.sqrt()/n.sqrt(), e_n2+PERCENTIL_TSTUDENT*v_n2.sqrt()/n.sqrt());
+
+        println!("E[Nq1] -> valor: {:.12} | precisão: {:.12}% | intervalo de confiança: ({:.12},{:.12})",
+            e_nq1, v_nq1.sqrt()*PERCENTIL_TSTUDENT*100.0/(n.sqrt()*e_nq1), e_nq1-PERCENTIL_TSTUDENT*v_nq1.sqrt()/n.sqrt(), e_nq1+PERCENTIL_TSTUDENT*v_nq1.sqrt()/n.sqrt());
+
+        println!("E[Nq2] -> valor: {:.12} | precisão: {:.12}% | intervalo de confiança: ({:.12},{:.12})",
+            e_nq2, v_nq2.sqrt()*PERCENTIL_TSTUDENT*100.0/(n.sqrt()*e_nq2), e_nq2-PERCENTIL_TSTUDENT*v_nq2.sqrt()/n.sqrt(), e_nq2+PERCENTIL_TSTUDENT*v_nq2.sqrt()/n.sqrt());
+
+        println!("E[W1]  -> valor: {:.12} | precisão: {:.12}% | intervalo de confiança: ({:.12},{:.12})",
+            e_w1, dp_w1*PERCENTIL_TSTUDENT*100.0/(n.sqrt()*e_w1), e_w1-PERCENTIL_TSTUDENT*dp_w1/n.sqrt(),e_w1+PERCENTIL_TSTUDENT*dp_w1/n.sqrt());
+        
+        println!("E[W2]  -> valor: {:.12} | precisão: {:.12}% | intervalo de confiança: ({:.12},{:.12})",
+            e_w2, dp_w2*PERCENTIL_TSTUDENT*100.0/(n.sqrt()*e_w2), e_w2-PERCENTIL_TSTUDENT*dp_w2/n.sqrt(),e_w2+PERCENTIL_TSTUDENT*dp_w2/n.sqrt());
+
+        println!("E[T1]  -> valor: {:.12} | precisão: {:.12}% | intervalo de confiança: ({:.12},{:.12})",
+            e_t1, dp_t1*PERCENTIL_TSTUDENT*100.0/(n.sqrt()*e_t1), e_t1-PERCENTIL_TSTUDENT*dp_t1/n.sqrt(),e_t1+PERCENTIL_TSTUDENT*dp_t1/n.sqrt());
+
+        println!("E[T2]  -> valor: {:.12} | precisão: {:.12}% | intervalo de confiança: ({:.12},{:.12})",
+            e_t2, dp_t2*PERCENTIL_TSTUDENT*100.0/(n.sqrt()*e_t2), e_t2-PERCENTIL_TSTUDENT*dp_t2/n.sqrt(),e_t2+PERCENTIL_TSTUDENT*dp_t2/n.sqrt());
+        
+        println!("\nPara as cada variância teremos um intervalo de confiança Chi² e um T-Student: ");
+
+        let precisao_chi = (self.chi_sqr_up-self.chi_sqr_low)/(self.chi_sqr_low + self.chi_sqr_up);
+
+        print!("Chi²:      ");
+        println!("V(W1)      -> valor: {:.12} | precisão: {:.12}% | intervalo de confiança: ({:.12},{:.12})",
+            dp_w1.powi(2),precisao_chi,(n-1.0)*dp_w1.powi(2)/self.chi_sqr_up,(n-1.0)*dp_w1.powi(2)/self.chi_sqr_low);
+
+        print!("T-Student: ");
+        println!("E[Vi(W1)]  -> valor: {:.12} | precisão: {:.12}% | intervalo de confiança: ({:.12},{:.12})",
+            e_v_w1_sqr,v_w1_sqr.sqrt()*PERCENTIL_TSTUDENT*100.0/(n.sqrt()*e_v_w1_sqr), e_v_w1_sqr-PERCENTIL_TSTUDENT*v_w1_sqr.sqrt()/n.sqrt(),e_v_w1_sqr+PERCENTIL_TSTUDENT*v_w1_sqr.sqrt()/n.sqrt());
+        
+        print!("Chi²:      ");
+        println!("V(W2)      -> valor: {:.12} | precisão: {:.12}% | intervalo de confiança: ({:.12},{:.12})",
+            dp_w2.powi(2),precisao_chi,(n-1.0)*dp_w2.powi(2)/self.chi_sqr_up,(n-1.0)*dp_w2.powi(2)/self.chi_sqr_low);
+
+        print!("T-Student: ");
+        println!("E[Vi(W2)]  -> valor: {:.12} | precisão: {:.12}% | intervalo de confiança: ({:.12},{:.12})",
+            e_v_w2_sqr,v_w2_sqr.sqrt()*PERCENTIL_TSTUDENT*100.0/(n.sqrt()*e_v_w2_sqr), e_v_w2_sqr-PERCENTIL_TSTUDENT*v_w2_sqr.sqrt()/n.sqrt(),e_v_w2_sqr+PERCENTIL_TSTUDENT*v_w2_sqr.sqrt()/n.sqrt());
     }
 }
