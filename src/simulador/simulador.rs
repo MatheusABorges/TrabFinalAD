@@ -481,7 +481,7 @@ impl Simulador {
         estatisticas_rodada.e_t1 = self.estatisticas_clientes_rodada.e_t1/n;
         estatisticas_rodada.e_t2 = self.estatisticas_clientes_rodada.e_t2/n;
         estatisticas_rodada.e_w1 = self.estatisticas_clientes_rodada.e_w1/n;
-        estatisticas_rodada.e_w2 = self.estatisticas_clientes_rodada.e_t2/n;
+        estatisticas_rodada.e_w2 = self.estatisticas_clientes_rodada.e_w2/n;
         estatisticas_rodada.e_x1 = self.estatisticas_clientes_rodada.e_x1/n;
         estatisticas_rodada.e_x2 = self.estatisticas_clientes_rodada.e_x2/n;
         
