@@ -21,6 +21,24 @@ struct  ConfiancaAtingida{
     finalizou : bool
 }
 
+#[derive(Debug)]
+struct Cov{
+    w1:f64,
+    w2:f64,
+    t1:f64,
+    t2:f64,
+    n1:f64,
+    n2:f64,
+    nq1:f64,
+    nq2:f64
+}
+
+impl Cov{
+    pub fn novo() -> Self {
+        Self { w1: 0.0, w2: 0.0, t1: 0.0, t2: 0.0, n1: 0.0, n2: 0.0, nq1: 0.0, nq2: 0.0 }
+    }
+}
+
 impl ConfiancaAtingida {
     fn novo() -> Self {
         Self { w1: false, w2: false, t1: false, t2: false, n1: false, n2: false, nq1: false, nq2: false,finalizou:false}
@@ -77,7 +95,10 @@ pub struct Simulador{
     //Guarda o limte superior do percentil da distribuição chi² passada na criação do simulador
     chi_sqr_up : f64,
     //Guarda o limte inferior do percentil da distribuição chi² passada na criação do simulador
-    chi_sqr_low : f64
+    chi_sqr_low : f64,
+    //Guarda covariância por rodada das métricas para obtermos tamanho ideal de rodada
+    cov : Vec<Cov>,
+    cov_n : Vec<Cov>
 }
 
 impl Simulador {
@@ -105,7 +126,9 @@ impl Simulador {
             max_rodadas,
             confianca_atingida : ConfiancaAtingida::novo(),
             chi_sqr_low,
-            chi_sqr_up
+            chi_sqr_up,
+            cov : Vec::new(),
+            cov_n : Vec::new()
         }
     }
 
@@ -133,7 +156,9 @@ impl Simulador {
             max_rodadas,
             confianca_atingida : ConfiancaAtingida::novo(),
             chi_sqr_low,
-            chi_sqr_up
+            chi_sqr_up,
+            cov : Vec::new(),
+            cov_n : Vec::new()
         }
     }
 
@@ -156,6 +181,7 @@ impl Simulador {
             // }
         }
         self.exibe_resultado();
+        //self.analisa_cov();
     }
 
 
@@ -458,6 +484,14 @@ impl Simulador {
         self.n_clientes_total.e_nq1 += estatisticas_n.e_nq1;
         self.n_clientes_total.e_nq2 += estatisticas_n.e_nq2;
         
+        let mut cov_n = Cov::novo();
+
+        cov_n.n1 =  estatisticas_n.e_n1;
+        cov_n.n2 =  estatisticas_n.e_n2;
+        cov_n.nq1 =  estatisticas_n.e_nq1;
+        cov_n.nq2 =  estatisticas_n.e_nq2;
+
+        self.cov_n.push(cov_n);
 
         //Incrementa as estatísticas do quadrado das amostras da rodada para cálculo posterior da variância
         self.n_clientes_total.v_n1 += estatisticas_n.e_n1.powi(2);
@@ -537,6 +571,14 @@ impl Simulador {
         estatisticas_rodada.e_x1 = self.estatisticas_clientes_rodada.e_x1/n;
         estatisticas_rodada.e_x2 = self.estatisticas_clientes_rodada.e_x2/n;
         
+        let mut cov = Cov::novo();
+        cov.w1 = estatisticas_rodada.e_w1;
+        cov.w2 = estatisticas_rodada.e_w2;
+        cov.t1 = estatisticas_rodada.e_t1;
+        cov.t2 = estatisticas_rodada.e_t2;
+
+        self.cov.push(cov);
+
         //Acumula a estatística de variância de w1
         estatisticas_rodada.v_w1 = self.estatisticas_clientes_rodada.v_w1/(n - 1.0);
         estatisticas_rodada.v_w1 += self.estatisticas_clientes_rodada.e_w1.powi(2)/(n*(n-1.0));
@@ -578,6 +620,7 @@ impl Simulador {
     }
 
     //Função que verificar se o intervalo de confiança de 95% já foi atingido na rodada atual
+    //Utilizada somente para análise
     fn verifica_confianca_media(&mut self) {
         let n = self.rodada_atual as f64;
         /*println!("{}", ((self.estatisticas_clientes_total.v_w1/n) * PERCENTIL_TSTUDENT)/
@@ -774,5 +817,76 @@ impl Simulador {
         print!("T-Student: ");
         println!("E[Vi(W2)]  -> valor: {:.12} | precisão: {:.12}% | intervalo de confiança: ({:.12},{:.12})",
             e_v_w2_sqr,v_w2_sqr.sqrt()*PERCENTIL_TSTUDENT*100.0/(n.sqrt()*e_v_w2_sqr), e_v_w2_sqr-PERCENTIL_TSTUDENT*v_w2_sqr.sqrt()/n.sqrt(),e_v_w2_sqr+PERCENTIL_TSTUDENT*v_w2_sqr.sqrt()/n.sqrt());
+    }
+
+    fn analisa_cov(&self) {
+        let n = self.rodada_atual as f64;
+
+        let mut cov = Cov::novo();
+
+        let v_w1 = (self.estatisticas_clientes_total.v_w1/n).powi(2);
+        let v_w2 = (self.estatisticas_clientes_total.v_w2/n).powi(2);
+        let v_t1 = (self.estatisticas_clientes_total.v_t1/n).powi(2);
+        let v_t2 = (self.estatisticas_clientes_total.v_t2/n).powi(2);
+
+        let e_w1 = self.estatisticas_clientes_total.e_w1/n;
+        let e_w2 = self.estatisticas_clientes_total.e_w2/n;
+        let e_t1 = self.estatisticas_clientes_total.e_t1/n;
+        let e_t2 = self.estatisticas_clientes_total.e_t2/n;
+
+        let mut e_n1 = self.n_clientes_total.e_n1;
+        let mut e_n2 = self.n_clientes_total.e_n2;
+        let mut e_nq1 = self.n_clientes_total.e_nq1;
+        let mut e_nq2 = self.n_clientes_total.e_nq2;
+
+        let mut v_n1 = self.n_clientes_total.v_n1;
+        let mut v_n2 = self.n_clientes_total.v_n2;
+        let mut v_nq1 = self.n_clientes_total.v_nq1;
+        let mut v_nq2 = self.n_clientes_total.v_nq2;
+
+        //Calcula os estimadores das variâncias de N1, N2, Nq1 e Nq2
+        v_n1 = (v_n1/(n-1.0)) + (e_n1.powi(2)/(n*(n-1.0)));
+        v_n2 = (v_n2/(n-1.0)) + (e_n2.powi(2)/(n*(n-1.0)));
+        v_nq1 = (v_nq1/(n-1.0)) + (e_nq1.powi(2)/(n*(n-1.0)));
+        v_nq2 = (v_nq2/(n-1.0)) + (e_nq2.powi(2)/(n*(n-1.0)));
+        
+
+        //Calcula os estimadores de E[N1], E[N2], E[Nq1], E[Nq2]
+        e_n1 /= n;
+        e_n2 /= n;
+        e_nq1 /= n;
+        e_nq2 /= n;
+        
+        for i in 1..(self.rodada_atual-1){
+            cov.w1 += (self.cov.get(i).unwrap().w1 - e_w1)*(self.cov.get(i+1).unwrap().w1 - e_w1);
+            cov.w2 += (self.cov.get(i).unwrap().w2 - e_w2)*(self.cov.get(i+1).unwrap().w2 - e_w2);
+            cov.t1 += (self.cov.get(i).unwrap().t1 - e_t1)*(self.cov.get(i+1).unwrap().t1 - e_t1);
+            cov.t2 += (self.cov.get(i).unwrap().t2 - e_t2)*(self.cov.get(i+1).unwrap().t2 - e_t2);
+            
+            cov.n1 += (self.cov_n.get(i).unwrap().n1 - e_n1)*(self.cov_n.get(i+1).unwrap().n1 - e_n1);
+            cov.n2 += (self.cov_n.get(i).unwrap().n2 - e_n2)*(self.cov_n.get(i+1).unwrap().n2 - e_n2);
+            cov.nq1 += (self.cov_n.get(i).unwrap().nq1 - e_nq1)*(self.cov_n.get(i+1).unwrap().nq1 - e_nq1);
+            cov.nq2 += (self.cov_n.get(i).unwrap().nq2 - e_nq2)*(self.cov_n.get(i+1).unwrap().nq2 - e_nq2);
+        }
+
+        cov.w1 /= n-2.0;
+        cov.w2 /= n-2.0;
+        cov.t1 /= n-2.0;
+        cov.t2 /= n-2.0;
+
+        cov.n1 /= n-2.0;
+        cov.n2 /= n-2.0;
+        cov.nq1 /= n-2.0;
+        cov.nq2 /= n-2.0;
+
+        println!("W1: var={}, cov={}", v_w1, cov.w1);
+        println!("W2: var={}, cov={}", v_w2, cov.w2);
+        println!("T1: var={}, cov={}", v_t1, cov.t1);
+        println!("T2: var={}, cov={}", v_t2, cov.t2);
+
+        println!("N1: var={}, cov={}", v_n1, cov.n1);
+        println!("N2: var={}, cov={}", v_n2, cov.n2);
+        println!("Nq1: var={}, cov={}", v_nq1, cov.nq1);
+        println!("Nq2: var={}, cov={}", v_nq2, cov.nq2);
     }
 }
