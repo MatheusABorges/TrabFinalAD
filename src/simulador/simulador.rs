@@ -9,6 +9,7 @@ const RHO_08 : usize =  4_000;
 const RHO_09 : usize =  10_000;
 const PERCENTIL_TSTUDENT : f64 = 1.96;
 
+//Estrutura de dados auxiliar utilizada somente para realizar o teste de precisão para estimar o número de rodadas
 struct  ConfiancaAtingida{
     w1 : bool,
     w2 : bool,
@@ -22,6 +23,7 @@ struct  ConfiancaAtingida{
 }
 
 #[derive(Debug)]
+//Estrutura de dados auxiliar, contruída somente para realizar os testes de covariância
 struct Cov{
     w1:f64,
     w2:f64,
@@ -484,8 +486,10 @@ impl Simulador {
         self.n_clientes_total.e_nq1 += estatisticas_n.e_nq1;
         self.n_clientes_total.e_nq2 += estatisticas_n.e_nq2;
         
+        //Variável auxiliar para a coleta de estatísticas para o teste da covariância
         let mut cov_n = Cov::novo();
 
+        //Inicia a variável auxiliar para a coleta de estatísticas para o teste da covariância
         cov_n.n1 =  estatisticas_n.e_n1;
         cov_n.n2 =  estatisticas_n.e_n2;
         cov_n.nq1 =  estatisticas_n.e_nq1;
@@ -571,7 +575,10 @@ impl Simulador {
         estatisticas_rodada.e_x1 = self.estatisticas_clientes_rodada.e_x1/n;
         estatisticas_rodada.e_x2 = self.estatisticas_clientes_rodada.e_x2/n;
         
+        //Variável auxiliar para a coleta de estatísticas para o teste da covariância
         let mut cov = Cov::novo();
+
+        //Coleta de estatísticas para o teste da covariância
         cov.w1 = estatisticas_rodada.e_w1;
         cov.w2 = estatisticas_rodada.e_w2;
         cov.t1 = estatisticas_rodada.e_t1;
@@ -620,11 +627,10 @@ impl Simulador {
     }
 
     //Função que verificar se o intervalo de confiança de 95% já foi atingido na rodada atual
-    //Utilizada somente para análise
+    //Utilizada somente para análise e não faz parte da execução normal do simulador
     fn verifica_confianca_media(&mut self) {
         let n = self.rodada_atual as f64;
-        /*println!("{}", ((self.estatisticas_clientes_total.v_w1/n) * PERCENTIL_TSTUDENT)/
-                        (n.sqrt()*(self.estatisticas_clientes_total.e_w1/n)));*/
+        //Verifica se a precisão desejada foi atingida, caso tenha sido, exibe a rodada em que atingiu
         if ((self.estatisticas_clientes_total.v_w1/n) * PERCENTIL_TSTUDENT)/n.sqrt() 
                 < 0.05 * (self.estatisticas_clientes_total.e_w1/n) && !self.confianca_atingida.w1{
             self.confianca_atingida.w1 = true;
@@ -634,6 +640,7 @@ impl Simulador {
             }
         }
 
+        //Verifica se a precisão desejada foi atingida, caso tenha sido, exibe a rodada em que atingiu
         if ((self.estatisticas_clientes_total.v_w2/n) * PERCENTIL_TSTUDENT)/n.sqrt() 
                 < 0.05 * (self.estatisticas_clientes_total.e_w2/n) && !self.confianca_atingida.w2{
             self.confianca_atingida.w2 = true;
@@ -643,6 +650,7 @@ impl Simulador {
             }
         }
 
+        //Verifica se a precisão desejada foi atingida, caso tenha sido, exibe a rodada em que atingiu
         if ((self.estatisticas_clientes_total.v_t1/n) * PERCENTIL_TSTUDENT)/n.sqrt() 
                 < 0.05 * (self.estatisticas_clientes_total.e_t1/n) && !self.confianca_atingida.t1{
             self.confianca_atingida.t1 = true;
@@ -652,6 +660,7 @@ impl Simulador {
             }
         }
 
+        //Verifica se a precisão desejada foi atingida, caso tenha sido, exibe a rodada em que atingiu
         if ((self.estatisticas_clientes_total.v_t2/n) * PERCENTIL_TSTUDENT)/n.sqrt() 
                 < 0.05 * (self.estatisticas_clientes_total.e_t2/n) && !self.confianca_atingida.t2{
             self.confianca_atingida.t2 = true;
@@ -663,6 +672,7 @@ impl Simulador {
 
         let mut desvio_padrao : f64;
 
+        //Verifica se a precisão desejada foi atingida, caso tenha sido, exibe a rodada em que atingiu
         desvio_padrao = self.n_clientes_total.v_n1/(n-1.0) + self.n_clientes_total.e_n1.powi(2)/(n*(n-1.0));
         desvio_padrao = desvio_padrao.sqrt();
         if (desvio_padrao * PERCENTIL_TSTUDENT)/n.sqrt() < 0.05 * (self.n_clientes_total.e_n1/n) &&
@@ -674,6 +684,7 @@ impl Simulador {
             }
         }
 
+        //Verifica se a precisão desejada foi atingida, caso tenha sido, exibe a rodada em que atingiu
         desvio_padrao = self.n_clientes_total.v_n2/(n-1.0) + self.n_clientes_total.e_n2.powi(2)/(n*(n-1.0));
         desvio_padrao = desvio_padrao.sqrt();
         if (desvio_padrao * PERCENTIL_TSTUDENT)/n.sqrt() < 0.05 * (self.n_clientes_total.e_n2/n) &&
@@ -685,6 +696,7 @@ impl Simulador {
             }
         }
 
+        //Verifica se a precisão desejada foi atingida, caso tenha sido, exibe a rodada em que atingiu
         desvio_padrao = self.n_clientes_total.v_nq1/(n-1.0) + self.n_clientes_total.e_nq1.powi(2)/(n*(n-1.0));
         desvio_padrao = desvio_padrao.sqrt();
         if (desvio_padrao * PERCENTIL_TSTUDENT)/n.sqrt() < 0.05 * (self.n_clientes_total.e_nq1/n) &&
@@ -695,7 +707,8 @@ impl Simulador {
                 println!("Atingiu 95% para Nq1 com {} rodadas", n);
             }
         }
-
+    
+        //Verifica se a precisão desejada foi atingida, caso tenha sido, exibe a rodada em que atingiu
         desvio_padrao = self.n_clientes_total.v_nq2/(n-1.0) + self.n_clientes_total.e_nq2.powi(2)/(n*(n-1.0));
         desvio_padrao = desvio_padrao.sqrt();
         if (desvio_padrao * PERCENTIL_TSTUDENT)/n.sqrt() < 0.05 * (self.n_clientes_total.e_nq2/n) &&
@@ -819,26 +832,33 @@ impl Simulador {
             e_v_w2_sqr,v_w2_sqr.sqrt()*PERCENTIL_TSTUDENT*100.0/(n.sqrt()*e_v_w2_sqr), e_v_w2_sqr-PERCENTIL_TSTUDENT*v_w2_sqr.sqrt()/n.sqrt(),e_v_w2_sqr+PERCENTIL_TSTUDENT*v_w2_sqr.sqrt()/n.sqrt());
     }
 
+    //Função que realiza o teste de covariância
+    //Usada somente para testes de tamanho ideal de rodadas
+    //Não faz parte do fluxo normal de execução do simulador
     fn analisa_cov(&self) {
         let n = self.rodada_atual as f64;
 
         let mut cov = Cov::novo();
 
+        //variâncias
         let v_w1 = (self.estatisticas_clientes_total.v_w1/n).powi(2);
         let v_w2 = (self.estatisticas_clientes_total.v_w2/n).powi(2);
         let v_t1 = (self.estatisticas_clientes_total.v_t1/n).powi(2);
         let v_t2 = (self.estatisticas_clientes_total.v_t2/n).powi(2);
 
+        //médias
         let e_w1 = self.estatisticas_clientes_total.e_w1/n;
         let e_w2 = self.estatisticas_clientes_total.e_w2/n;
         let e_t1 = self.estatisticas_clientes_total.e_t1/n;
         let e_t2 = self.estatisticas_clientes_total.e_t2/n;
 
+        //médias*n
         let mut e_n1 = self.n_clientes_total.e_n1;
         let mut e_n2 = self.n_clientes_total.e_n2;
         let mut e_nq1 = self.n_clientes_total.e_nq1;
         let mut e_nq2 = self.n_clientes_total.e_nq2;
 
+        //soma do quadrado das médias
         let mut v_n1 = self.n_clientes_total.v_n1;
         let mut v_n2 = self.n_clientes_total.v_n2;
         let mut v_nq1 = self.n_clientes_total.v_nq1;
@@ -857,6 +877,7 @@ impl Simulador {
         e_nq1 /= n;
         e_nq2 /= n;
         
+        //Calcula a covariância para todas as métricas
         for i in 1..(self.rodada_atual-1){
             cov.w1 += (self.cov.get(i).unwrap().w1 - e_w1)*(self.cov.get(i+1).unwrap().w1 - e_w1);
             cov.w2 += (self.cov.get(i).unwrap().w2 - e_w2)*(self.cov.get(i+1).unwrap().w2 - e_w2);
@@ -879,6 +900,7 @@ impl Simulador {
         cov.nq1 /= n-2.0;
         cov.nq2 /= n-2.0;
 
+        //Exibe o resultado obtido na tela
         println!("W1: var={}, cov={}", v_w1, cov.w1);
         println!("W2: var={}, cov={}", v_w2, cov.w2);
         println!("T1: var={}, cov={}", v_t1, cov.t1);
