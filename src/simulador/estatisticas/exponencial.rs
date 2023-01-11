@@ -34,6 +34,9 @@ impl AmostraExp{
         }
     }
 
+    //Função que gera um elemento de uma sequência determinística
+    //OBS: utilizada somente para testes simples de análise de corretude
+    //e funcionamento da fila
     pub fn prox_det(&mut self,lambda : f64) -> f64 {
         self.det_atual += 1;
         self.det_atual %= self.seed;
