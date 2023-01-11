@@ -7,6 +7,8 @@ const RHO_04 : usize =  6_000;
 const RHO_06 : usize =  8_000;
 const RHO_08 : usize =  4_000;
 const RHO_09 : usize =  10_000;
+
+const RHO_19 : usize =  1;
 const PERCENTIL_TSTUDENT : f64 = 1.96;
 
 struct  ConfiancaAtingida{
@@ -224,10 +226,13 @@ impl Simulador {
             //contabiliza o tempo ocioso do simulador
             if self.esta_ocioso {
                 self.tempo_ocioso += evento_atual.tempo - self.tempo;
+                println!("Servidor está ocioso por {:.3}s",evento_atual.tempo - self.tempo);
                 self.esta_ocioso = false;
             }
             //atualiza o tempo atual da simulação
             self.tempo = evento_atual.tempo;
+            
+            println!("Próximo evento ocorrerá em t= {:.3}s",evento_atual.tempo);
             match evento_atual.tipo {
                 TipoEvento::CHEGADA => self.trata_chegada(evento_atual),
                 TipoEvento::FimServico1 => self.trata_fim_1(evento_atual),
@@ -243,6 +248,8 @@ impl Simulador {
 
     //Trata a execução do evento do tipo Chegada
     pub fn trata_chegada(&mut self, evento_atual : Evento){
+        
+        println!("CHEGADA em t={:.3}s",evento_atual.tempo);
         //Gera o cliente que está chegando na chegada atual
         let novo_cliente = self.inicia_cliente();
         //Gera uma amostra exponencial com taxa lambda para uma nova chegada
@@ -253,9 +260,12 @@ impl Simulador {
             self.tempo));
 
         //Verifica a existência de clientes sendo servidos
+        println!("Cliente de tempo = {:.3}s checa se fila 1 está vazia",self.tempo);
         match &mut (self.ocupa_servidor){
             //Caso não exista cliente no servidor
             None => {
+                
+                println!("Fila está vazia, cliente pode ocupar servidor, terminará serviço 1 em {:.3}s",self.tempo + novo_cliente.servico_1);
                 //Adiciona evento fim de serviço 1 à lista de eventos
                 self.adiciona_evento(Evento::novo(TipoEvento::FimServico1, 
                     self.tempo + novo_cliente.servico_1,
@@ -267,11 +277,14 @@ impl Simulador {
             Some(cliente) =>{
                 //Caso o cliente seja da cor branca
                 if matches!(cliente.cor, Cor::BRANCO) {
+                    println!("Servidor ocupado por cliente BRANCO de t={:.3}s, cliente de t={:.3}s vai pra fila 1",cliente.chegada, novo_cliente.chegada);
                     self.fila_1.push_back(novo_cliente);
                 }else{
+                    println!("Servidor ocupado por cliente PRETO de t = {:.3}s, cliente de tempo {:.3}s o interrompe e assume o servidor",cliente.chegada, novo_cliente.chegada);
                     self.adiciona_evento(Evento::novo(TipoEvento::FimServico1, 
                         self.tempo + novo_cliente.servico_1,
                         self.tempo));
+                        
                     self.trata_interrupcao();
                     //Remove o cliente antigo do servidor dando lugar ao novo da cor branca
                     self.ocupa_servidor = Some(novo_cliente);
@@ -283,7 +296,11 @@ impl Simulador {
     //Trata a execução do evento de fim do serviço 1
     pub fn trata_fim_1(&mut self, evento_atual : Evento){
         //Recupera quem está dentro do servidor atualmente
+        
+        println!("FIM SERVIÇO 1 em {:.3}s",evento_atual.tempo);
         if let Some(cliente_atual) = &mut self.ocupa_servidor {
+            
+            println!("Cliente t={:.3}s vai terminar sua execução em t={:.3}s",cliente_atual.chegada,self.tempo);
             //armazena o tempo em que o cliente termina o serviço 1
             cliente_atual.termina_1 = self.tempo;
             //muda a cor do cliente pois o mesmo só terá serviço 2 pela frente
@@ -294,15 +311,20 @@ impl Simulador {
                 if self.fila_2.is_empty(){
                     //Adiciona o evento de fim do serviço 2 à lista de eventos
                     //OBS: não foi necessário incluir o cliente no servidor pois ele já estava no mesmo
+                    
+                    println!("Fila 2 vazia, Cliente t={:.3}s continua no servidor e vai terminar sua execução2 em t={:.3}s",cliente_atual.chegada,self.tempo + cliente_atual.resta_servico_2);
                     self.adiciona_evento(Evento::novo(TipoEvento::FimServico2, 
                         self.tempo + self.ocupa_servidor.unwrap().resta_servico_2,
                         self.tempo));
                 //Caso a fila 2 possua clientes
                 }else{
                     //Adiciona o cliente que terminou seu ser atendido pelo serviço 1 à fila 2
+                    println!("Fila 2 ocupada, Cliente t={:.3}s vai para o final da fila 2",cliente_atual.chegada);
+
                     self.fila_2.push_back(*cliente_atual);
                     //Recupera o primeiro da fila 2 e o fornece serviço do tipo 2
                     self.ocupa_servidor = self.fila_2.pop_front();
+                    println!("Cliente t={:.3}s sai da fila 2 e ocupa o servidor, vai terminar serviço 2 em t={:.3}s",self.ocupa_servidor.unwrap().chegada,self.tempo + self.ocupa_servidor.unwrap().resta_servico_2);
                     //Adiciona o evento de fim do serviço 2 à lista de eventos
                     self.adiciona_evento(Evento::novo(TipoEvento::FimServico2, 
                         self.tempo + self.ocupa_servidor.unwrap().resta_servico_2,
@@ -311,8 +333,11 @@ impl Simulador {
             }else {
                 //Adiciona o cliente que terminou seu serviço 1 à fila 2
                 self.fila_2.push_back(*cliente_atual);
+                println!("Fila 1 ocupada, Cliente t={:.3}s vai para o final da fila 2",cliente_atual.chegada);
                 //Recupera o primeiro cliente da fila 1 e o adiciona ao servidor
                 self.ocupa_servidor = self.fila_1.pop_front();
+                
+                println!("Cliente t={:.3}s sai da fila 1 e assume o servidor, terminará serviço em t={:.3}s",self.ocupa_servidor.unwrap().chegada,self.tempo + self.ocupa_servidor.unwrap().servico_1);
                 //Cria um novo envento do tipo FimServico1 e o adciona à lista de eventos
                 self.adiciona_evento(Evento::novo(TipoEvento::FimServico1, 
                     self.tempo + self.ocupa_servidor.unwrap().servico_1,
@@ -326,11 +351,14 @@ impl Simulador {
     //Trata a execução do evento de fim do serviço 2
     pub fn trata_fim_2(&mut self, evento_atual : Evento){
         //Recupera quem está dentro do servidor atualmente
+        
+        println!("FIM SERVIÇO 2 em {:.3}s",evento_atual.tempo);
         if let Some(cliente_atual) = &mut self.ocupa_servidor {
             //Armazena o instante em que o cliente finaliza o serviço 2
             cliente_atual.termina_2 = self.tempo;
             //Zera o tempo de serviço 2 restante para o cliente
             cliente_atual.resta_servico_2 = 0.0;
+            println!("Cliente preto de chegada t = {:.3}s terminou serviço 2!",cliente_atual.chegada);
             
             //Gera um erro caso a fila 1 esteja ocupada
             if !self.fila_1.is_empty(){
@@ -340,6 +368,8 @@ impl Simulador {
             //Contabiliza todas as estatísticas do cliente que acaba de deixar o sistema
             //se o mesmo pertencer à rodada atual
             if self.rodada_atual != 0 && cliente_atual.rodada == self.rodada_atual{
+                
+                println!("Agora podemos contabilizar suas estatisticas:");
                 self.contabiliza_estatisticas_cliente();
             }
 
@@ -349,11 +379,13 @@ impl Simulador {
                 self.ocupa_servidor = None;
                 //Declara o servidor como estando em estado ocioso
                 self.esta_ocioso = true;
+                println!("Servidor volta a ficar ocioso.");
             //Caso a fila 2 não esteja vazia
             }else{
                 //Recupera o primeiro cliente da fila 2 e o concede serviço
                 self.ocupa_servidor = self.fila_2.pop_front();
                 //Adiciona o evento fim de serviço 2 à lista de eventos
+                println!("Primeiro cliente da fila 2 que chegou em t={:.3}s ocupa servidor",self.ocupa_servidor.unwrap().chegada);
                 self.adiciona_evento(Evento::novo(TipoEvento::FimServico2, 
                     self.tempo + self.ocupa_servidor.unwrap().resta_servico_2,
                     self.tempo));
@@ -367,6 +399,7 @@ impl Simulador {
     //da lista de eventos
     pub fn trata_interrupcao(&mut self){
         //Remove os eventos do tipo Fim Serviço 2 da lista de eventos
+        println!("INTERRUPÇAO!!!");
         self.lista_eventos.retain(|event| {
             if matches!(event.tipo, TipoEvento::FimServico2){
                 let tempo_atual = self.tempo;
@@ -375,6 +408,7 @@ impl Simulador {
                     //Ajusta o tempo restante para o término do serviço 2 para o cliente atualmente no servidor
                     cliente.resta_servico_2 = event.tempo - tempo_atual;
                     //Reenvia o cliente para a fila 2
+                    println!("Cliente t={:.3}s volta para o inicio da fila 2",cliente.chegada);
                     self.fila_2.push_front(*cliente);
                 }
                 //retorna falso, dessa forma, removendo o evento da lista
@@ -479,7 +513,9 @@ impl Simulador {
             self.estatisticas_clientes_rodada.v_w2 += cliente.tempo_w2().powi(2);
             self.estatisticas_clientes_rodada.v_t1 += cliente.tempo_t1().powi(2);
             self.estatisticas_clientes_rodada.v_t2 += cliente.tempo_t2().powi(2);
+            println!("Acumulando estatísticas do cliente de chegada t={}s para contabilizarmos no final da rodada",cliente.chegada);
         }
+        
     }
 
     //Função que não participa diretamente da execução do simulador mas sim

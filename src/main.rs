@@ -8,7 +8,7 @@ use crate::simulador::estatisticas::exponencial::AmostraExp;
 fn main(){
     //let mut sim = Simulador::novo_det(0.4, 1000000, 10, 5);
     //let mut sim = Simulador::novo(0.4, 10_000_000, 10);
-    let mut sim = Simulador::novo(0.6, 500, 11_600, 11899.41, 11302.38);
+    let mut sim = Simulador::novo(0.10, 600, 11600, 11899.41, 11302.38);
     sim.roda_simulacao();
     /*for i in 0..20{    
         print!("{} - ", i);
